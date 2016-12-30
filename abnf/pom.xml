@@ -4,10 +4,10 @@
   <parent>
     <groupId>dk.i1.diameter</groupId>
     <artifactId>root</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>0.9.6.14-SNAPSHOT</version>
   </parent>
   <artifactId>abnf</artifactId>
-  <name>JavaDiameter:abnf</name>
+  <name>JavaDiameter:ABNF</name>
   <packaging>jar</packaging>
 </project>
 
