@@ -1,12 +1,12 @@
 package dk.i1.diameter.session;
 
-import java.util.logging.Level;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_UTF8String;
 import dk.i1.diameter.AVP_Unsigned32;
 import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.Utils;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A basic implementation of a Diameter session
@@ -34,7 +34,9 @@ import dk.i1.diameter.Utils;
  * <li>{@link #getDestinationRealm}</li>
  * </ul>
  */
+@Slf4j
 public abstract class BaseSession implements Session {
+
   private final SessionManager session_manager;
   private String session_id;
 
@@ -59,7 +61,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Constructor for BaseSession
-   * 
+   *
    * @param auth_app_id The authentication application-id that will be reported in AAR and STR requests
    * @param session_manager The session manager that manages this session
    */
@@ -81,7 +83,7 @@ public abstract class BaseSession implements Session {
   /**
    * Returns the session-id of the session. If the session-id has not been
    * generated yet, null is returned.
-   * 
+   *
    * @return The session-id, or null
    */
   public final String sessionId() {
@@ -97,7 +99,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Retrieve the auth-application-id specified when creating this session.
-   * 
+   *
    * @return The auth-app-id specified when this session was constructed
    */
   public final int authAppId() {
@@ -106,7 +108,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Determine if authentication/(re-)authorization is currently in progress.
-   * 
+   *
    * @return true if initial authentication+authorization or re-authorization is in progress.
    */
   public final boolean authInProgress() {
@@ -123,7 +125,7 @@ public abstract class BaseSession implements Session {
   /**
    * Return whether the server is maintaining state about this sessions.
    * Derived from Auth-Session-State AVP.
-   * 
+   *
    * @return true if server maintanis state and STR must be sent
    */
   public boolean stateMaintained() {
@@ -132,7 +134,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Specify if server is maintaining state
-   * 
+   *
    * @param state_maintained If true STR will be sent
    */
   protected void stateMaintained(final boolean state_maintained) {
@@ -142,7 +144,7 @@ public abstract class BaseSession implements Session {
   /**
    * Return the time when the session was first authorized.
    * This is the time when authSuccessful() was first called.
-   * 
+   *
    * @return The absolute time in milliseconds when the session was first
    *         authorized. 0 If it never was.
    */
@@ -158,7 +160,7 @@ public abstract class BaseSession implements Session {
    * unknown command is encountered COMMAND_UNSUPPORTED is returned.
    * If a subclass implements a diameter application that has additional
    * server-initiated commands it should override this method.
-   * 
+   *
    * @param request The request
    * @return result from handleRAR(), handleASR() or COMMAND_UNSUPPORTED
    */
@@ -178,7 +180,7 @@ public abstract class BaseSession implements Session {
    * The BaseSession implementation knows how to handle session-termination
    * answers by calling handleSTA(). If an unknown command is encountered a
    * warning is logged but otherwise ignored.
-   * 
+   *
    * @param answer The answer message
    * @param state The state object specified in sendRequest()
    */
@@ -188,8 +190,7 @@ public abstract class BaseSession implements Session {
         handleSTA(answer);
         break;
       default:
-        session_manager.logger.log(Level.WARNING,
-            "Session '" + session_id + "' could not handle answer (command_code=" + answer.hdr.command_code + ")");
+        log.warn("Session '" + session_id + "' could not handle answer (command_code=" + answer.hdr.command_code + ")");
         break;
     }
   }
@@ -198,7 +199,7 @@ public abstract class BaseSession implements Session {
    * Handle a non-answer.
    * The BaseSession implementation knows how to deal with missing answers
    * to session-termination.
-   * 
+   *
    * @param command_code The command_code from the original request.
    * @param state The state object specified in sendRequest()
    */
@@ -208,8 +209,7 @@ public abstract class BaseSession implements Session {
         handleSTA(null); //slightly naughty...
         break;
       default:
-        session_manager.logger.log(Level.WARNING,
-            "Session '" + session_id + "' could not handle non-answer (command_code=" + command_code + ")");
+        log.warn("Session '" + session_id + "' could not handle non-answer (command_code=" + command_code + ")");
         break;
     }
   }
@@ -218,7 +218,7 @@ public abstract class BaseSession implements Session {
   /**
    * Process an Re-Auth Request.
    * This implementation starts re-authorization if not already in progress.
-   * 
+   *
    * @return result-code (success)
    */
   protected int handleRAR(final Message msg) {
@@ -232,7 +232,7 @@ public abstract class BaseSession implements Session {
    * Process an Abort-Session Request.
    * This implementation will stop the session unconditionally. An STR
    * will be sent if the server said it kept state.
-   * 
+   *
    * @return result-code (success)
    */
   protected int handleASR(final Message msg) {
@@ -254,7 +254,7 @@ public abstract class BaseSession implements Session {
    * Tell BaseSession that (re-)authorization succeeded.
    * A subclass must call this method when it has received and
    * successfully processed an authorization-answer.
-   * 
+   *
    * @param msg Message that caused the success. Can be null.
    */
   protected void authSuccessful(final Message msg) {
@@ -274,12 +274,14 @@ public abstract class BaseSession implements Session {
    * The BaseSession implementation closes the session with a suitable termination-cause.
    * A subclass must call this method when it has not received and
    * successfully processed an authorization-answer.
-   * 
+   *
    * @param msg Message that caused the failure. Can be null.
    */
   protected void authFailed(final Message msg) {
     auth_in_progress = false;
-    session_manager.logger.log(Level.INFO, "Authentication/Authorization failed, closing session " + session_id);
+    if (log.isInfoEnabled()) {
+      log.info("Authentication/Authorization failed, closing session " + session_id);
+    }
     if (state() == State.pending) {
       closeSession(msg, ProtocolConstants.DI_TERMINATION_CAUSE_DIAMETER_ADMINISTRATIVE);
     } else {
@@ -291,7 +293,7 @@ public abstract class BaseSession implements Session {
    * Process STA (or lack of STA).
    * This method is called when an STA has been received, or when an STA
    * has not been received (broken link/server down)
-   * 
+   *
    * @param msg The STA message or null
    */
   public void handleSTA(final Message msg) {
@@ -308,7 +310,7 @@ public abstract class BaseSession implements Session {
    * The BaseSession calculates this based on session-timeout, auth-lifetime and auth-grace-period.
    * <p>
    * Example override:
-   * 
+   *
    * <pre>
    public long calcNextTimeout() <i>//In your session class</i>
        long timeout = BaseSession.calcNextTimeout();
@@ -316,9 +318,9 @@ public abstract class BaseSession implements Session {
        return timeout;
    }
    * </pre>
-   * 
+   *
    * When overriding this method you should also override handleTimeout().
-   * 
+   *
    * @return The next timeout, or Long.MAX_VALUE if none
    */
   public long calcNextTimeout() {
@@ -346,18 +348,17 @@ public abstract class BaseSession implements Session {
     if (state == State.open) {
       final long now = System.currentTimeMillis();
       if (session_timeout != 0 && now >= first_auth_time + session_timeout * 1000) {
-        session_manager.logger.log(Level.FINE, "Session-Timeout has expired, closing session");
+        log.trace("Session-Timeout has expired, closing session");
         closeSession(null, ProtocolConstants.DI_TERMINATION_CAUSE_DIAMETER_SESSION_TIMEOUT);
         return;
       }
       if (now >= session_auth_timers.getMaxTimeout()) {
-        session_manager.logger.log(Level.FINE, "authorization-lifetime has expired, closing session");
+        log.trace("authorization-lifetime has expired, closing session");
         closeSession(null, ProtocolConstants.DI_TERMINATION_CAUSE_DIAMETER_AUTH_EXPIRED);
         return;
       }
       if (now >= session_auth_timers.getNextReauthTime()) {
-        session_manager.logger.log(Level.FINE,
-            "authorization-lifetime(+grace-period) has expired, sending re-authorization");
+        log.trace("authorization-lifetime(+grace-period) has expired, sending re-authorization");
         startReauth();
         sessionManager().updateTimeouts(this);
         return;
@@ -369,7 +370,7 @@ public abstract class BaseSession implements Session {
   /**
    * State transition hook.
    * This method is called before the session changes from one state to another
-   * 
+   *
    * @param prev_state The current state
    * @param new_state The next state
    * @param msg The message that caused this transition. May be null if the transition is not caused by a message.
@@ -381,7 +382,7 @@ public abstract class BaseSession implements Session {
   /**
    * State transition hook.
    * This method is called after the session changes from one state to another
-   * 
+   *
    * @param prev_state The previous state
    * @param new_state The current (new) state
    * @param msg The message that caused this transition. May be null if the transition was not caused by a message.
@@ -396,7 +397,7 @@ public abstract class BaseSession implements Session {
    * being reused InvalidStateException is thrown. The session does not
    * switch to state 'open' immediately, but rather the session-specific
    * authentication/authorization is initiated.
-   * 
+   *
    */
   public void openSession() throws InvalidStateException {
     if (state != State.idle) {
@@ -418,7 +419,7 @@ public abstract class BaseSession implements Session {
    * Close a session.
    * Initiate session tear-down by issuing STR etc. It is harmless to try
    * to close a session more than once.
-   * 
+   *
    * @param termination_cause The reason for closing the session. See
    *        RFC3588 section 8.15 for details
    */
@@ -428,7 +429,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Close a session.
-   * 
+   *
    * @param msg The message that caused this session to close
    * @param termination_cause The termination-cause for the session.
    */
@@ -477,7 +478,7 @@ public abstract class BaseSession implements Session {
 
   /**
    * Update the session-timeout of this session.
-   * 
+   *
    * @param session_timeout The relative session-time in seconds
    */
   protected void updateSessionTimeout(final int session_timeout) {
@@ -486,7 +487,9 @@ public abstract class BaseSession implements Session {
   }
 
   private final void sendSTR(final int termination_cause) {
-    session_manager.logger.log(Level.FINE, "Sending STR for session " + session_id);
+    if (log.isTraceEnabled()) {
+      log.trace("Sending STR for session " + session_id);
+    }
     final Message str = new Message();
     str.hdr.setRequest(true);
     str.hdr.setProxiable(true);
@@ -511,7 +514,7 @@ public abstract class BaseSession implements Session {
    * Termination-Cause. Subclasses may want to override this to add
    * application-specific AVPs, such as user-name, calling-station-id, etc.
    * When overriding this method, the subclass must first call this method, then add its own AVPs.
-   * 
+   *
    * @param request The STR message
    * @param termination_cause The Termination-Cause for closing the session.
    */
@@ -526,7 +529,7 @@ public abstract class BaseSession implements Session {
    * This method is called when the session needs a value to put into destination-realm AVP (RFC3588 section 6.6)
    * The BaseSession just returns the same realm as the realm in the SessionManager's settings.
    * Subclasses may want to override this and eg. specify the user's realm instead.
-   * 
+   *
    * @return A suitable destination-realm.
    */
   protected String getDestinationRealm() {
@@ -541,7 +544,7 @@ public abstract class BaseSession implements Session {
    * returns null because it does not have any additional useful
    * information to add. A subclass may want to return eg. user-name or
    * calling-station-id.
-   * 
+   *
    * @return null
    */
   protected String getSessionIdOptionalPart() {
@@ -549,10 +552,9 @@ public abstract class BaseSession implements Session {
   }
 
   //utility functions
-
   /**
    * Extract the Result-Code AVP value from a message
-   * 
+   *
    * @return Result-Code value, or -1 if something fails.
    */
   protected static final int getResultCode(final Message msg) {
@@ -572,7 +574,7 @@ public abstract class BaseSession implements Session {
    * Most Diameter messages have these 4 AVPs. The origin-host and
    * origin-realm are the ones specified in the NodeManager's settings.
    * Destination-realm will be the value returned by getDestinationRealm().
-   * 
+   *
    * @param request The request that should have the 4 AVPs added.
    */
   public void addCommonStuff(final Message request) {

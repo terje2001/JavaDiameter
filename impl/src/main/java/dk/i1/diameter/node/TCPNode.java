@@ -9,19 +9,20 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.Message;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 final class TCPNode extends NodeImplementation {
+
   private Thread node_thread;
   private Selector selector;
   private ServerSocketChannel serverChannel;
   private boolean please_stop;
   private long shutdown_deadline;
 
-  public TCPNode(final Node node, final NodeSettings settings, final Logger logger) {
-    super(node, settings, logger);
+  public TCPNode(final Node node, final NodeSettings settings) {
+    super(node, settings);
   }
 
   @Override
@@ -40,42 +41,42 @@ final class TCPNode extends NodeImplementation {
 
   @Override
   void start() {
-    logger.log(Level.FINEST, "Starting TCP node");
+    log.trace("Starting TCP node");
     please_stop = false;
     node_thread = new SelectThread();
     node_thread.setDaemon(true);
     node_thread.start();
-    logger.log(Level.FINEST, "Started TCP node");
+    log.trace("Started TCP node");
   }
 
   @Override
   void wakeup() {
-    logger.log(Level.FINEST, "Waking up selector thread");
+    log.trace("Waking up selector thread");
     selector.wakeup();
   }
 
   @Override
   void initiateStop(final long shutdown_deadline) {
-    logger.log(Level.FINEST, "Initiating stop of TCP node");
+    log.trace("Initiating stop of TCP node");
     please_stop = true;
     this.shutdown_deadline = shutdown_deadline;
-    logger.log(Level.FINEST, "Initiated stop of TCP node");
+    log.trace("Initiated stop of TCP node");
   }
 
   @Override
   void join() {
-    logger.log(Level.FINEST, "Joining selector thread");
+    log.trace("Joining selector thread");
     try {
       node_thread.join();
     } catch (final InterruptedException ex) {
     }
     node_thread = null;
-    logger.log(Level.FINEST, "Selector thread joined");
+    log.trace("Selector thread joined");
   }
 
   @Override
   void closeIO() {
-    logger.log(Level.FINEST, "Closing server channel, etc.");
+    log.trace("Closing server channel, etc.");
     if (serverChannel != null) {
       try {
         serverChannel.close();
@@ -88,10 +89,11 @@ final class TCPNode extends NodeImplementation {
     } catch (final java.io.IOException ex) {
     }
     selector = null;
-    logger.log(Level.FINEST, "Closed selector, etc.");
+    log.trace("Closed selector, etc.");
   }
 
   private class SelectThread extends Thread {
+
     public SelectThread() {
       super("DiameterNode thread (TCP)");
     }
@@ -147,14 +149,16 @@ final class TCPNode extends NodeImplementation {
           final SelectionKey key = (SelectionKey) it.next();
 
           if (key.isAcceptable()) {
-            logger.log(Level.FINE, "Got an inbound connection (key is acceptable)");
+            log.trace("Got an inbound connection (key is acceptable)");
             final ServerSocketChannel server = (ServerSocketChannel) key.channel();
             final SocketChannel channel = server.accept();
             final InetSocketAddress address = (InetSocketAddress) channel.socket().getRemoteSocketAddress();
-            logger.log(Level.INFO, "Got an inbound connection from " + address.toString());
+            if (log.isInfoEnabled()) {
+              log.info("Got an inbound connection from " + address.toString());
+            }
             if (!please_stop) {
-              final TCPConnection conn =
-                  new TCPConnection(TCPNode.this, settings.watchdogInterval(), settings.idleTimeout());
+              final TCPConnection conn
+                      = new TCPConnection(TCPNode.this, settings.watchdogInterval(), settings.idleTimeout());
               conn.host_id = address.getAddress().getHostAddress();
               conn.state = Connection.State.connected_in;
               conn.channel = channel;
@@ -167,18 +171,18 @@ final class TCPNode extends NodeImplementation {
               channel.close();
             }
           } else if (key.isConnectable()) {
-            logger.log(Level.FINE, "An outbound connection is ready (key is connectable)");
+            log.trace("An outbound connection is ready (key is connectable)");
             final SocketChannel channel = (SocketChannel) key.channel();
             final TCPConnection conn = (TCPConnection) key.attachment();
             try {
               if (channel.finishConnect()) {
-                logger.log(Level.FINEST, "Connected!");
+                log.trace("Connected!");
                 conn.state = Connection.State.connected_out;
                 channel.register(selector, SelectionKey.OP_READ, conn);
                 initiateCER(conn);
               }
             } catch (final java.io.IOException ex) {
-              logger.log(Level.WARNING, "Connection to '" + conn.host_id + "' failed", ex);
+              log.warn("Connection to '" + conn.host_id + "' failed", ex);
               try {
                 channel.register(selector, 0);
                 channel.close();
@@ -187,23 +191,23 @@ final class TCPNode extends NodeImplementation {
               unregisterConnection(conn);
             }
           } else if (key.isReadable()) {
-            logger.log(Level.FINEST, "Key is readable");
+            log.trace("Key is readable");
             //System.out.println("key is readable");
             final SocketChannel channel = (SocketChannel) key.channel();
             final TCPConnection conn = (TCPConnection) key.attachment();
             handleReadable(conn);
-            if (conn.state != Connection.State.closed &&
-                conn.hasNetOutput()) {
+            if (conn.state != Connection.State.closed
+                    && conn.hasNetOutput()) {
               channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, conn);
             }
           } else if (key.isWritable()) {
-            logger.log(Level.FINEST, "Key is writable");
+            log.trace("Key is writable");
             final SocketChannel channel = (SocketChannel) key.channel();
             final TCPConnection conn = (TCPConnection) key.attachment();
             synchronized (getLockObject()) {
               handleWritable(conn);
-              if (conn.state != Connection.State.closed &&
-                  conn.hasNetOutput()) {
+              if (conn.state != Connection.State.closed
+                      && conn.hasNetOutput()) {
                 channel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE, conn);
               }
             }
@@ -217,33 +221,35 @@ final class TCPNode extends NodeImplementation {
       }
 
       //Remaining connections are close by Node instance
-
       //selector is closed in stop()
     }
   }
 
   private void handleReadable(final TCPConnection conn) {
-    logger.log(Level.FINEST, "handlereadable()...");
+    log.trace("handlereadable()...");
     conn.makeSpaceInNetInBuffer();
     final ConnectionBuffers connection_buffers = conn.connection_buffers;
-    logger.log(Level.FINEST, "pre: conn.in_buffer.position=" + connection_buffers.netInBuffer().position());
+    if (log.isTraceEnabled()) {
+      log.trace("pre: conn.in_buffer.position=" + connection_buffers.netInBuffer().position());
+    }
     int count;
     try {
       int loop_count = 0;
       while ((count = conn.channel.read(connection_buffers.netInBuffer())) > 0 && loop_count++ < 3) {
-        logger.log(Level.FINEST,
-            "readloop: connection_buffers.netInBuffer().position=" + connection_buffers.netInBuffer().position());
+        if (log.isTraceEnabled()) {
+          log.trace("readloop: connection_buffers.netInBuffer().position=" + connection_buffers.netInBuffer().position());
+        }
         conn.makeSpaceInNetInBuffer();
       }
     } catch (final java.io.IOException ex) {
-      logger.log(Level.FINE, "got IOException", ex);
+      log.trace("got IOException", ex);
       closeConnection(conn);
       return;
     }
     conn.processNetInBuffer();
     processInBuffer(conn);
     if (count < 0 && conn.state != Connection.State.closed) {
-      logger.log(Level.FINE, "count<0");
+      log.trace("count<0");
       closeConnection(conn);
       return;
     }
@@ -251,7 +257,9 @@ final class TCPNode extends NodeImplementation {
 
   private void processInBuffer(final TCPConnection conn) {
     final ByteBuffer app_in_buffer = conn.connection_buffers.appInBuffer();
-    logger.log(Level.FINEST, "pre: app_in_buffer.position=" + app_in_buffer.position());
+    if (log.isTraceEnabled()) {
+      log.trace("pre: app_in_buffer.position=" + app_in_buffer.position());
+    }
     final int raw_bytes = app_in_buffer.position();
     final byte[] raw = new byte[raw_bytes];
     app_in_buffer.position(0);
@@ -278,7 +286,7 @@ final class TCPNode extends NodeImplementation {
           offset += msg_size;
           final boolean b = handleMessage(msg, conn);
           if (!b) {
-            logger.log(Level.FINER, "handle error");
+            log.trace("handle error");
             closeConnection(conn);
             return;
           }
@@ -301,13 +309,13 @@ final class TCPNode extends NodeImplementation {
 
   private void handleWritable(final Connection conn_) {
     final TCPConnection conn = (TCPConnection) conn_;
-    logger.log(Level.FINEST, "handleWritable():");
+    log.trace("handleWritable():");
     final ByteBuffer net_out_buffer = conn.connection_buffers.netOutBuffer();
     //int bytes = net_out_buffer.position();
     //net_out_buffer.rewind();
     //net_out_buffer.limit(bytes);
     net_out_buffer.flip();
-    //logger.log(Level.FINEST,"                :bytes= " + bytes);
+    //log.trace("                :bytes= " + bytes);
     int count;
     try {
       count = conn.channel.write(net_out_buffer);
@@ -363,10 +371,12 @@ final class TCPNode extends NodeImplementation {
       }
       final InetSocketAddress address = new InetSocketAddress(peer.host(), peer.port());
       try {
-        logger.log(Level.FINEST, "Initiating TCP connection to " + address.toString());
+        if (log.isTraceEnabled()) {
+          log.trace("Initiating TCP connection to " + address.toString());
+        }
         if (channel.connect(address)) {
           //This only happens on Solaris when connecting locally
-          logger.log(Level.FINEST, "Connected!");
+          log.trace("Connected!");
           conn.state = Connection.State.connected_out;
           conn.channel = channel;
           selector.wakeup();
@@ -383,8 +393,8 @@ final class TCPNode extends NodeImplementation {
       selector.wakeup();
       channel.register(selector, SelectionKey.OP_CONNECT, conn);
     } catch (final java.io.IOException ex) {
-      logger.log(Level.WARNING, "java.io.IOException caught while initiating connection to '" + peer.host() + "'.",
-          ex);
+      log.warn("java.io.IOException caught while initiating connection to '" + peer.host() + "'.",
+              ex);
     }
     return true;
   }
@@ -412,7 +422,7 @@ final class TCPNode extends NodeImplementation {
   private static int last_tried_port = 0;
 
   private void bindChannelInRange(final SocketChannel channel, final int min, final int max)
-    throws java.io.IOException {
+          throws java.io.IOException {
     final int max_iterations = max - min + 1;
     for (int i = 0; i < max_iterations; i++) {
       last_tried_port++;

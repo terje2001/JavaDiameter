@@ -1,8 +1,6 @@
 package dk.i1.diameter.example;
 
 import java.util.Iterator;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_UTF8String;
 import dk.i1.diameter.AVP_Unsigned32;
@@ -11,13 +9,15 @@ import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.session.AASession;
 import dk.i1.diameter.session.ACHandler;
 import dk.i1.diameter.session.SessionManager;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A quite simple session based on AASession, and supports simple accounting.
  * This class is used by some of the other examples.
  */
+@Slf4j
 public class TestSession extends AASession {
-  static private Logger logger = Logger.getLogger("TestSession");
+
   ACHandler achandler;
 
   public TestSession(final int auth_app_id, final SessionManager session_manager) {
@@ -28,7 +28,7 @@ public class TestSession extends AASession {
 
   @Override
   public void handleAnswer(final Message answer, final Object state) {
-    logger.log(Level.FINE, "processing answer");
+    log.trace("processing answer");
     switch (answer.hdr.command_code) {
       case ProtocolConstants.DIAMETER_COMMAND_ACCOUNTING:
         achandler.handleACA(answer);
@@ -41,7 +41,7 @@ public class TestSession extends AASession {
 
   @Override
   public void handleNonAnswer(final int command_code, final Object state) {
-    logger.log(Level.FINE, "processing non-answer");
+    log.trace("processing non-answer");
     switch (command_code) {
       case ProtocolConstants.DIAMETER_COMMAND_ACCOUNTING:
         achandler.handleACA(null);
@@ -96,7 +96,9 @@ public class TestSession extends AASession {
 
   @Override
   public void newStatePre(final State prev_state, final State new_state, final Message msg, final int cause) {
-    logger.log(Level.FINE, "prev=" + prev_state + " new=" + new_state);
+    if (log.isTraceEnabled()) {
+      log.trace("prev=" + prev_state + " new=" + new_state);
+    }
     if (prev_state != State.discon && new_state == State.discon) {
       achandler.stopSession();
     }
@@ -104,7 +106,9 @@ public class TestSession extends AASession {
 
   @Override
   public void newStatePost(final State prev_state, final State new_state, final Message msg, final int cause) {
-    logger.log(Level.FINE, "prev=" + prev_state + " new=" + new_state);
+    if (log.isTraceEnabled()) {
+      log.trace("prev=" + prev_state + " new=" + new_state);
+    }
     if (prev_state != State.open && new_state == State.open) {
       achandler.startSession();
     }

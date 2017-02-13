@@ -2,14 +2,13 @@ package dk.i1.diameter.node;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_UTF8String;
 import dk.i1.diameter.AVP_Unsigned32;
 import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.Utils;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A Node manager.
@@ -68,17 +67,18 @@ import dk.i1.diameter.Utils;
  * <li>The answer is passed down to the Node instance which then sends or queues the message</li>
  * </ol>
  */
+@Slf4j
 public abstract class NodeManager implements MessageDispatcher, ConnectionListener {
 
   private final Node node;
   private final NodeSettings settings;
   private Map<ConnectionKey, Map<Integer, RequestData>> req_map;
-  private final Logger logger;
   private boolean stop_timeout_thread;
   private TimeoutThread timeout_thread;
   private boolean timeout_thread_actively_waiting;
 
   private final class RequestData {
+
     public Object state;
     public long timeout_time;
 
@@ -108,7 +108,6 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
     node = new Node(this, this, settings, node_validator);
     this.settings = settings;
     req_map = new HashMap<ConnectionKey, Map<Integer, RequestData>>();
-    this.logger = Logger.getLogger("dk.i1.diameter.node");
   }
 
   /**
@@ -215,7 +214,6 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
   //    in answer
   //        consume (for locally generated request)
   //        forward answer
-
   /**
    * Handle a request.
    * This method is called when a request arrives. It is meant to be
@@ -236,13 +234,14 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
   protected void handleRequest(final Message request, final ConnectionKey connkey, final Peer peer) {
     // incoming requests are not expected by this node
     final Message answer = new Message();
-    logger.log(Level.FINE,
-        "Handling incoming request, command_code=" + request.hdr.command_code + ", peer=" + peer.host() + ", end2end="
-            + request.hdr.end_to_end_identifier + ", hopbyhop=" + request.hdr.hop_by_hop_identifier);
+    if (log.isTraceEnabled()) {
+      log.trace("Handling incoming request, command_code=" + request.hdr.command_code + ", peer=" + peer.host() + ", end2end="
+              + request.hdr.end_to_end_identifier + ", hopbyhop=" + request.hdr.hop_by_hop_identifier);
+    }
     answer.prepareResponse(request);
     answer.hdr.setError(true);
     answer.add(
-        new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNABLE_TO_DELIVER));
+            new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNABLE_TO_DELIVER));
     node.addOurHostAndRealm(answer);
     Utils.copyProxyInfo(request, answer);
     Utils.setMandatory_RFC3588(answer);
@@ -269,8 +268,10 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    */
   protected void handleAnswer(final Message answer, final ConnectionKey answer_connkey, final Object state) {
     //default implementation: silently discard
-    logger.log(Level.FINE, "Handling incoming answer, command_code=" + answer.hdr.command_code + ", end2end="
-        + answer.hdr.end_to_end_identifier + ", hopbyhop=" + answer.hdr.hop_by_hop_identifier);
+    if (log.isTraceEnabled()) {
+      log.trace("Handling incoming answer, command_code=" + answer.hdr.command_code + ", end2end="
+              + answer.hdr.end_to_end_identifier + ", hopbyhop=" + answer.hdr.hop_by_hop_identifier);
+    }
   }
 
   /**
@@ -306,7 +307,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @throws StaleConnectionException If the ConnectionKey refers to a lost connection.
    */
   protected final void forwardRequest(final Message request, final ConnectionKey connkey, final Object state)
-    throws StaleConnectionException, NotARequestException, NotProxiableException {
+          throws StaleConnectionException, NotARequestException, NotProxiableException {
     forwardRequest(request, connkey, state, -1);
   }
 
@@ -327,8 +328,8 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @since 0.9.6.8 timeout parameter introduced
    */
   protected final void forwardRequest(final Message request, final ConnectionKey connkey, final Object state,
-      final long timeout)
-    throws StaleConnectionException, NotARequestException, NotProxiableException {
+          final long timeout)
+          throws StaleConnectionException, NotARequestException, NotProxiableException {
     if (!request.hdr.isProxiable()) {
       throw new NotProxiableException();
     }
@@ -362,7 +363,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @throws StaleConnectionException If the ConnectionKey refers to a lost connection.
    */
   protected final void forwardAnswer(final Message answer, final ConnectionKey connkey)
-    throws StaleConnectionException, NotAnAnswerException, NotProxiableException {
+          throws StaleConnectionException, NotAnAnswerException, NotProxiableException {
     if (!answer.hdr.isProxiable()) {
       throw new NotProxiableException();
     }
@@ -387,7 +388,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @throws StaleConnectionException If the ConnectionKey refers to a lost connection.
    */
   public final void sendRequest(final Message request, final ConnectionKey connkey, final Object state)
-    throws StaleConnectionException, NotARequestException {
+          throws StaleConnectionException, NotARequestException {
     sendRequest(request, connkey, state, -1);
   }
 
@@ -405,8 +406,8 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @since 0.9.6.8 timeout parameter introduced
    */
   public final void sendRequest(final Message request, final ConnectionKey connkey, final Object state,
-      final long timeout)
-    throws StaleConnectionException, NotARequestException {
+          final long timeout)
+          throws StaleConnectionException, NotARequestException {
     if (!request.hdr.isRequest()) {
       throw new NotARequestException();
     }
@@ -423,8 +424,10 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
       }
     }
     node.sendMessage(request, connkey);
-    logger.log(Level.FINER, "Request sent, command_code=" + request.hdr.command_code + " hop_by_hop_identifier="
-        + request.hdr.hop_by_hop_identifier);
+    if (log.isTraceEnabled()) {
+      log.trace("Request sent, command_code=" + request.hdr.command_code + " hop_by_hop_identifier="
+              + request.hdr.hop_by_hop_identifier);
+    }
     //note: if Node.sendMessage() throws StaleConnectionException
     //then we should theoretically remove the registered request,
     //but that is done by the ConnectionListener.handle() method.
@@ -445,7 +448,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @throws NotRoutableException If the message could not be sent to any of the peers.
    */
   public final void sendRequest(final Message request, final Peer peers[], final Object state)
-    throws NotRoutableException, NotARequestException {
+          throws NotRoutableException, NotARequestException {
     sendRequest(request, peers, state, -1);
   }
 
@@ -466,15 +469,18 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * @since 0.9.6.8 timeout parameter introduced
    */
   public final void sendRequest(final Message request, final Peer peers[], final Object state, final long timeout)
-    throws NotRoutableException, NotARequestException {
-    logger.log(Level.FINER,
-        "Sending request (command_code=" + request.hdr.command_code + ") to " + peers.length + " peers");
+          throws NotRoutableException, NotARequestException {
+    if (log.isTraceEnabled()) {
+      log.trace("Sending request (command_code=" + request.hdr.command_code + ") to " + peers.length + " peers");
+    }
     request.hdr.end_to_end_identifier = node.nextEndToEndIdentifier();
     boolean any_peers = false;
     boolean any_capable_peers = false;
     for (final Peer p : peers) {
       any_peers = true;
-      logger.log(Level.FINER, "Considering sending request to " + p.host());
+      if (log.isTraceEnabled()) {
+        log.trace("Considering sending request to " + p.host());
+      }
       final ConnectionKey connkey = node.findConnection(p);
       if (connkey == null) {
         continue;
@@ -484,7 +490,9 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
         continue;
       }
       if (!node.isAllowedApplication(request, p2)) {
-        logger.log(Level.FINER, "peer " + p.host() + " cannot handle request");
+        if (log.isTraceEnabled()) {
+          log.trace("peer " + p.host() + " cannot handle request");
+        }
         continue;
       }
       any_capable_peers = true;
@@ -494,7 +502,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
       } catch (final StaleConnectionException e) {
         //ok
       }
-      logger.log(Level.FINE, "Setting retransmit bit");
+      log.trace("Setting retransmit bit");
       request.hdr.setRetransmit(true);
     }
     if (any_capable_peers) {
@@ -514,10 +522,12 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    */
   public final boolean handle(final Message msg, final ConnectionKey connkey, final Peer peer) {
     if (msg.hdr.isRequest()) {
-      logger.log(Level.FINER, "Handling request");
+      log.trace("Handling request");
       handleRequest(msg, connkey, peer);
     } else {
-      logger.log(Level.FINER, "Handling answer, hop_by_hop_identifier=" + msg.hdr.hop_by_hop_identifier);
+      if (log.isTraceEnabled()) {
+        log.trace("Handling answer, hop_by_hop_identifier=" + msg.hdr.hop_by_hop_identifier);
+      }
       //locate state
       Object state = null;
       boolean found = false;
@@ -535,7 +545,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
       if (found) {
         handleAnswer(msg, connkey, state);
       } else {
-        logger.log(Level.INFO, "Answer did not match any outstanding request");
+        log.info("Answer did not match any outstanding request");
       }
     }
     return true;
@@ -574,6 +584,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
    * out
    */
   private class TimeoutThread extends Thread {
+
     public TimeoutThread() {
       super("NodeManager request timeout thread");
     }
@@ -593,7 +604,7 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
               }
               if (rd.timeout_time >= 0 && rd.timeout_time <= now) {
                 e_c.getValue().remove(e_s.getKey());
-                logger.log(Level.FINEST, "Timing out request");
+                log.trace("Timing out request");
                 handleAnswer(null, connkey, rd.state);
               }
             }

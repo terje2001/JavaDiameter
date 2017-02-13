@@ -8,8 +8,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Address;
 import dk.i1.diameter.AVP_Grouped;
@@ -20,6 +18,7 @@ import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.Utils;
 import dk.i1.diameter.VendorIDs;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A Diameter node.
@@ -64,10 +63,12 @@ import dk.i1.diameter.VendorIDs;
  * The default value is <tt>SHA1PRNG</tt>.
  * If set to <tt>bogus</tt> then the stack simply uses Random() instead.
  * Doing so technically violates RFC3588->RFC3539->RFC1750
- * 
+ *
  * @see NodeManager
  */
+@Slf4j
 public final class Node {
+
   private final MessageDispatcher message_dispatcher;
   private final ConnectionListener connection_listener;
   private final NodeSettings settings;
@@ -78,7 +79,6 @@ public final class Node {
   private long shutdown_deadline;
   private Map<ConnectionKey, Connection> map_key_conn;
   private Set<Peer> persistent_peers;
-  private final Logger logger;
   private final Object obj_conn_wait;
   private NodeImplementation tcp_node;
   private NodeImplementation sctp_node;
@@ -88,15 +88,15 @@ public final class Node {
    * Constructs a Node instance with the specified parameters.
    * The node is not automatically started.
    * Implemented as <tt>this(message_dispatcher,connection_listener,settings,null);</tt>
-   * 
+   *
    * @param message_dispatcher A message dispatcher. If null, a default dispatcher is used you. You probably dont want
    *        that one.
    * @param connection_listener A connection observer. Can be null.
    * @param settings The node settings.
    */
   public Node(final MessageDispatcher message_dispatcher,
-      final ConnectionListener connection_listener,
-      final NodeSettings settings) {
+          final ConnectionListener connection_listener,
+          final NodeSettings settings) {
     this(message_dispatcher, connection_listener, settings, null);
   }
 
@@ -104,7 +104,7 @@ public final class Node {
    * Constructor for Node.
    * Constructs a Node instance with the specified parameters.
    * The node is not automatically started.
-   * 
+   *
    * @param message_dispatcher A message dispatcher. If null, a default dispatcher is used you. You probably dont want
    *        that one.
    * @param connection_listener A connection observer. Can be null.
@@ -113,15 +113,14 @@ public final class Node {
    * @since 0.9.4
    */
   public Node(final MessageDispatcher message_dispatcher,
-      final ConnectionListener connection_listener,
-      final NodeSettings settings,
-      final NodeValidator node_validator) {
+          final ConnectionListener connection_listener,
+          final NodeSettings settings,
+          final NodeValidator node_validator) {
     this.message_dispatcher = (message_dispatcher == null) ? new DefaultMessageDispatcher() : message_dispatcher;
     this.connection_listener = (connection_listener == null) ? new DefaultConnectionListener() : connection_listener;
     this.settings = settings;
     this.node_validator = (node_validator == null) ? new DefaultNodeValidator() : node_validator;
     this.node_state = new NodeState();
-    this.logger = Logger.getLogger("dk.i1.diameter.node");
     this.obj_conn_wait = new Object();
     this.tcp_node = null;
     this.sctp_node = null;
@@ -131,7 +130,7 @@ public final class Node {
    * Start the node.
    * The node is started. If the port to listen on is already used by
    * another application or some other initial network error occurs a java.io.IOException is thrown.
-   * 
+   *
    * @throws java.io.IOException Usually when a priviledge port is specified, system out of resoruces, etc.
    * @throws UnsupportedTransportProtocolException If a transport-protocol has been specified as mandatory but could not
    *         be initialised.
@@ -140,7 +139,7 @@ public final class Node {
     if (tcp_node != null || sctp_node != null) {
       throw new java.io.IOException("Diameter stack is already running");
     }
-    logger.log(Level.INFO, "Starting Diameter node");
+    log.info("Starting Diameter node");
     please_stop = false;
     prepare();
     if (tcp_node != null) {
@@ -152,7 +151,7 @@ public final class Node {
     reconnect_thread = new ReconnectThread();
     reconnect_thread.setDaemon(true);
     reconnect_thread.start();
-    logger.log(Level.INFO, "Diameter node started");
+    log.info("Diameter node started");
   }
 
   /**
@@ -169,12 +168,12 @@ public final class Node {
    * unless the transport connection's buffers are full.
    * Threads waiting in {@link #waitForConnection} are woken.
    * Graceful connection close is not guaranteed in all cases.
-   * 
+   *
    * @param grace_time Maximum time (milliseconds) to wait for connections to close gracefully.
    * @since grace_time parameter introduced in 0.9.3
    */
   public void stop(final long grace_time) {
-    logger.log(Level.INFO, "Stopping Diameter node");
+    log.info("Stopping Diameter node");
     shutdown_deadline = System.currentTimeMillis() + grace_time;
     if (tcp_node != null) {
       tcp_node.initiateStop(shutdown_deadline);
@@ -183,21 +182,23 @@ public final class Node {
       sctp_node.initiateStop(shutdown_deadline);
     }
     if (map_key_conn == null) {
-      logger.log(Level.INFO, "Cannot stop node: It appears to not be running. (This is the fault of the caller)");
+      log.info("Cannot stop node: It appears to not be running. (This is the fault of the caller)");
       return;
     }
     synchronized (map_key_conn) {
       please_stop = true;
       //Close all the non-ready connections, initiate close on ready ones.
       for (final Iterator<Map.Entry<ConnectionKey, Connection>> it = map_key_conn.entrySet().iterator(); it
-          .hasNext();) {
+              .hasNext();) {
         final Map.Entry<ConnectionKey, Connection> e = it.next();
         final Connection conn = e.getValue();
         switch (conn.state) {
           case connecting:
           case connected_in:
           case connected_out:
-            logger.log(Level.FINE, "Closing connection to " + conn.host_id + " because we are shutting down");
+            if (log.isTraceEnabled()) {
+              log.trace("Closing connection to " + conn.host_id + " because we are shutting down");
+            }
             it.remove();
             conn.node_impl.closeConnection(conn);
             break;
@@ -255,7 +256,7 @@ public final class Node {
       sctp_node.closeIO();
       sctp_node = null;
     }
-    logger.log(Level.INFO, "Diameter node stopped");
+    log.info("Diameter node stopped");
   }
 
   private boolean anyReadyConnection() {
@@ -276,7 +277,7 @@ public final class Node {
   /**
    * Wait until at least one connection has been established to a peer
    * and capability-exchange has finished.
-   * 
+   *
    * @since 0.9.1
    */
   public void waitForConnection() throws InterruptedException {
@@ -291,7 +292,7 @@ public final class Node {
    * Wait until at least one connection has been established or until the timeout expires.
    * Waits until at least one connection to a peer has been established
    * and capability-exchange has finished, or the specified timeout has expired.
-   * 
+   *
    * @param timeout The maximum time to wait in milliseconds.
    * @since 0.9.1
    */
@@ -312,7 +313,7 @@ public final class Node {
    * Waits until at least one connection to a peer has been established
    * and capability-exchange has finished, or the specified timeout has expired.
    * If the timeout expires then a ConnectionTimeoutException is thrown.
-   * 
+   *
    * @param timeout The maximum time to wait in milliseconds.
    * @since 0.9.6.5
    * @throws ConnectionTimeoutException If the timeout expires without any connection established.
@@ -321,7 +322,7 @@ public final class Node {
     waitForConnection(timeout);
     if (!anyReadyConnection()) {
       throw new ConnectionTimeoutException(
-          "No connection was established within timeout (" + timeout + " milliseconds)");
+              "No connection was established within timeout (" + timeout + " milliseconds)");
     }
   }
 
@@ -329,13 +330,17 @@ public final class Node {
    * Returns the connection key for a peer.
    * Behaviour change since 0.9.6: Connections that are not in the "Open"
    * state (rfc3588 section 5.6) will not be returned.
-   * 
+   *
    * @return The connection key. Null if there is no connection to the peer.
    */
   public ConnectionKey findConnection(final Peer peer) {
-    logger.log(Level.FINER, "Finding '" + peer.host() + "'");
+    if (log.isTraceEnabled()) {
+      log.trace("Finding '" + peer.host() + "'");
+    }
     if (map_key_conn == null) {
-      logger.log(Level.FINER, peer.host() + " NOT found (node is not ready)");
+      if (log.isTraceEnabled()) {
+        log.trace(peer.host() + " NOT found (node is not ready)");
+      }
       return null;
     }
     synchronized (map_key_conn) {
@@ -347,12 +352,14 @@ public final class Node {
           continue;
         }
         if (conn.peer != null
-            && conn.peer.equals(peer)) {
+                && conn.peer.equals(peer)) {
           //System.out.println("Node.findConnection(): found");
           return conn.key;
         }
       }
-      logger.log(Level.FINER, peer.host() + " NOT found");
+      if (log.isTraceEnabled()) {
+        log.trace(peer.host() + " NOT found");
+      }
       return null;
     }
   }
@@ -430,7 +437,7 @@ public final class Node {
   /**
    * Send a message.
    * Send the specified message on the specified connection.
-   * 
+   *
    * @param msg The message to be sent
    * @param connkey The connection to use. If the connection has been closed in the meantime StaleConnectionException is
    *        thrown.
@@ -452,12 +459,13 @@ public final class Node {
   }
 
   private void sendMessage(final Message msg, final Connection conn) {
-    logger.log(Level.FINER,
-        "command=" + msg.hdr.command_code + ", to=" + (conn.peer != null ? conn.peer.toString() : conn.host_id));
+    if (log.isTraceEnabled()) {
+      log.trace("command=" + msg.hdr.command_code + ", to=" + (conn.peer != null ? conn.peer.toString() : conn.host_id));
+    }
     final byte[] raw = msg.encode();
 
-    if (logger.isLoggable(Level.FINEST)) {
-      hexDump(Level.FINEST, "Raw packet encoded", raw, 0, raw.length);
+    if (log.isTraceEnabled()) {
+      log.trace(hexDump("Raw packet encoded", raw, 0, raw.length));
     }
 
     conn.sendMessage(raw);
@@ -478,7 +486,7 @@ public final class Node {
    * <p>
    * You cannot initiate connections before the node has been started.
    * Connection to peers specifying an unsupported transport-protocl are simply ignored.
-   * 
+   *
    * @param peer The peer that the node should try to establish a connection to.
    * @param persistent If true the Node wil try to keep a connection open to the peer.
    */
@@ -491,13 +499,15 @@ public final class Node {
     synchronized (map_key_conn) {
       for (final Map.Entry<ConnectionKey, Connection> e : map_key_conn.entrySet()) {
         final Connection conn = e.getValue();
-        if (conn.peer != null &&
-            conn.peer.equals(peer)) {
+        if (conn.peer != null
+                && conn.peer.equals(peer)) {
           return; //already has a connection to that peer
           //what if we are connecting and the host_id matches?
         }
       }
-      logger.log(Level.INFO, "Initiating connection to '" + peer.host() + "' port " + peer.port());
+      if (log.isInfoEnabled()) {
+        log.info("Initiating connection to '" + peer.host() + "' port " + peer.port());
+      }
       NodeImplementation node_impl = null;
       switch (peer.transportProtocol()) {
         case tcp:
@@ -513,17 +523,22 @@ public final class Node {
         conn.peer = peer;
         if (node_impl.initiateConnection(conn, peer)) {
           map_key_conn.put(conn.key, conn);
-          logger.log(Level.FINEST, "Initiated connection to [" + peer.toString() + "]");
+          if (log.isTraceEnabled()) {
+            log.trace("Initiated connection to [" + peer.toString() + "]");
+          }
         }
       } else {
-        logger.log(Level.INFO,
-            "Transport connection to '" + peer.host() + "' cannot be established because the transport protocol ("
-                + peer.transportProtocol() + ") is not supported");
+        if (log.isInfoEnabled()) {
+          log.info(
+                  "Transport connection to '" + peer.host() + "' cannot be established because the transport protocol ("
+                  + peer.transportProtocol() + ") is not supported");
+        }
       }
     }
   }
 
   private class ReconnectThread extends Thread {
+
     public ReconnectThread() {
       super("Diameter node reconnect thread");
     }
@@ -553,7 +568,7 @@ public final class Node {
   }
 
   private static Boolean getUseOption(final Boolean setting, final String property_name,
-      final Boolean default_setting) {
+          final Boolean default_setting) {
     if (setting != null) {
       return setting;
     }
@@ -571,7 +586,7 @@ public final class Node {
   }
 
   @SuppressWarnings("unchecked")
-  private NodeImplementation instantiateNodeImplementation(final Level loglevel, final String class_name) {
+  private NodeImplementation instantiateNodeImplementation(final String class_name) {
     final Class our_cls = this.getClass();
     ClassLoader cls_ldr = our_cls.getClassLoader();
     if (cls_ldr == null) {
@@ -582,28 +597,22 @@ public final class Node {
       Constructor<NodeImplementation> ctor;
       try {
         ctor = cls.getConstructor(this.getClass(),
-            settings.getClass(),
-            cls_ldr.loadClass("java.util.logging.Logger"));
+                settings.getClass());
       } catch (final NoSuchMethodException ex) {
-        logger.log(loglevel, "Could not find constructor for " + class_name, ex);
+        log.warn("Could not find constructor for " + class_name, ex);
         return null;
       } catch (final NoClassDefFoundError ex) {
-        //This is the most common cause
-        if (loglevel != Level.FINE) {
-          logger.log(loglevel, "Could not find constructor for " + class_name, ex);
-        } else {
-          logger.log(loglevel, "Could not find constructor for " + class_name);
-        }
+        log.warn("Could not find constructor for " + class_name, ex);
         return null;
       } catch (final UnsatisfiedLinkError ex) {
-        logger.log(loglevel, "Could not find constructor for " + class_name, ex);
+        log.warn("Could not find constructor for " + class_name, ex);
         return null;
       }
       if (ctor == null) {
         return null;
       }
       try {
-        final NodeImplementation instance = ctor.newInstance(this, settings, logger);
+        final NodeImplementation instance = ctor.newInstance(this, settings);
         return instance;
       } catch (final InstantiationException ex) {
         return null;
@@ -612,45 +621,46 @@ public final class Node {
       } catch (final java.lang.reflect.InvocationTargetException ex) {
         return null;
       } catch (final UnsatisfiedLinkError ex) {
-        logger.log(loglevel, "Could not construct a " + class_name, ex);
+        log.warn("Could not construct a " + class_name, ex);
         return null;
       } catch (final NoClassDefFoundError ex) {
         //this exception was seen with ibm-java-ppc-60 JDK
         return null;
       }
     } catch (final ClassNotFoundException ex) {
-      logger.log(loglevel, "class " + class_name + " not found/loaded", ex);
+      log.warn("class " + class_name + " not found/loaded", ex);
       return null;
     }
   }
 
   private NodeImplementation loadTransportProtocol(final Boolean setting, final String setting_name,
-      final Boolean default_setting,
-      final String class_name, final String short_name)
-    throws java.io.IOException, UnsupportedTransportProtocolException {
+          final Boolean default_setting,
+          final String class_name, final String short_name)
+          throws java.io.IOException, UnsupportedTransportProtocolException {
     Boolean b;
     b = getUseOption(setting, setting_name, default_setting);
     NodeImplementation node_impl = null;
     if (b == null || b) {
-      node_impl = instantiateNodeImplementation(b != null ? Level.INFO : Level.FINE, class_name);
+      node_impl = instantiateNodeImplementation(class_name);
       if (node_impl != null) {
         node_impl.openIO();
       } else if (b != null) {
         throw new UnsupportedTransportProtocolException(short_name + " support could not be loaded");
       }
     }
-    logger.log(Level.INFO, short_name + " support was " + (node_impl != null ? "loaded" : "not loaded"));
+    if (log.isInfoEnabled()) {
+      log.info(short_name + " support was " + (node_impl != null ? "loaded" : "not loaded"));
+    }
     return node_impl;
   }
 
   private void prepare() throws java.io.IOException, UnsupportedTransportProtocolException {
     tcp_node = loadTransportProtocol(settings.useTCP(), "dk.i1.diameter.node.use_tcp", true,
-        "dk.i1.diameter.node.TCPNode", "TCP");
+            "dk.i1.diameter.node.TCPNode", "TCP");
     sctp_node = loadTransportProtocol(settings.useSCTP(), "dk.i1.diameter.node.use_sctp", null,
-        "dk.i1.diameter.node.SCTPNode", "SCTP");
+            "dk.i1.diameter.node.SCTPNode", "SCTP");
     if (tcp_node == null && sctp_node == null) {
-      logger.log(Level.WARNING,
-          "No transport protocol classes could be loaded. The stack is running but without have any connectivity");
+      log.warn("No transport protocol classes could be loaded. The stack is running but without have any connectivity");
     }
 
     map_key_conn = new HashMap<ConnectionKey, Connection>();
@@ -689,7 +699,7 @@ public final class Node {
   void runTimers(final NodeImplementation node_impl) {
     synchronized (map_key_conn) {
       for (final Iterator<Map.Entry<ConnectionKey, Connection>> it = map_key_conn.entrySet().iterator(); it
-          .hasNext();) {
+              .hasNext();) {
         final Map.Entry<ConnectionKey, Connection> e = it.next();
         final Connection conn = e.getValue();
         if (conn.node_impl != node_impl) {
@@ -700,18 +710,18 @@ public final class Node {
           case none:
             break;
           case disconnect_no_cer:
-            logger.log(Level.WARNING, "Disconnecting due to no CER/CEA");
+            log.warn("Disconnecting due to no CER/CEA");
             it.remove();
             closeConnection(conn);
             break;
           case disconnect_idle:
-            logger.log(Level.WARNING, "Disconnecting due to idle");
+            log.warn("Disconnecting due to idle");
             //busy is the closest thing to "no traffic for a long time. No point in keeping the connection"
             it.remove();
             initiateConnectionClose(conn, ProtocolConstants.DI_DISCONNECT_CAUSE_BUSY);
             break;
           case disconnect_no_dw:
-            logger.log(Level.WARNING, "Disconnecting due to no DWA");
+            log.warn("Disconnecting due to no DWA");
             it.remove();
             closeConnection(conn);
             break;
@@ -725,18 +735,15 @@ public final class Node {
 
   /** Logs a correctly decoded message */
   void logRawDecodedPacket(final byte[] raw, final int offset, final int msg_size) {
-    hexDump(Level.FINEST, "Raw packet decoded", raw, offset, msg_size);
+    log.trace(hexDump("Raw packet decoded", raw, offset, msg_size));
   }
 
   /** Logs an incorrectly decoded (non-diameter-)message. */
   void logGarbagePacket(final Connection conn, final byte[] raw, final int offset, final int msg_size) {
-    hexDump(Level.WARNING, "Garbage from " + conn.host_id, raw, offset, msg_size);
+    log.warn(hexDump("Garbage from " + conn.host_id, raw, offset, msg_size));
   }
 
-  void hexDump(final Level level, final String msg, final byte buf[], final int offset, int bytes) {
-    if (!logger.isLoggable(level)) {
-      return;
-    }
+  private String hexDump(final String msg, final byte buf[], final int offset, int bytes) {
     //For some reason this method is grotesquely slow, so we limit the raw dump to 1K
     if (bytes > 1024) {
       bytes = 1024;
@@ -770,7 +777,7 @@ public final class Node {
     if (bytes > 1024) {
       sb.append("...\n"); //Maybe the string "(truncated)" would be a more direct hint
     }
-    logger.log(level, sb.toString());
+    return sb.toString();
   }
 
   void closeConnection(final Connection conn) {
@@ -781,7 +788,9 @@ public final class Node {
     if (conn.state == Connection.State.closed) {
       return;
     }
-    logger.log(Level.INFO, "Closing connection to " + (conn.peer != null ? conn.peer.toString() : conn.host_id));
+    if (log.isInfoEnabled()) {
+      log.info("Closing connection to " + (conn.peer != null ? conn.peer.toString() : conn.host_id));
+    }
     synchronized (map_key_conn) {
       conn.node_impl.close(conn, reset);
       map_key_conn.remove(conn.key);
@@ -800,27 +809,27 @@ public final class Node {
   }
 
   boolean handleMessage(final Message msg, final Connection conn) {
-    if (logger.isLoggable(Level.FINE)) {
-      logger.log(Level.FINE, "command_code=" + msg.hdr.command_code + " application_id=" + msg.hdr.application_id
-          + " connection_state=" + conn.state);
+    if (log.isTraceEnabled()) {
+      log.trace("command_code=" + msg.hdr.command_code + " application_id=" + msg.hdr.application_id
+              + " connection_state=" + conn.state);
     }
     conn.timers.markActivity();
     if (conn.state == Connection.State.connected_in) {
       //only CER allowed
-      if (!msg.hdr.isRequest() ||
-          msg.hdr.command_code != ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE ||
-          msg.hdr.application_id != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
-        logger.log(Level.WARNING, "Got something that wasn't a CER");
+      if (!msg.hdr.isRequest()
+              || msg.hdr.command_code != ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE
+              || msg.hdr.application_id != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
+        log.warn("Got something that wasn't a CER");
         return false;
       }
       conn.timers.markRealActivity();
       return handleCER(msg, conn);
     } else if (conn.state == Connection.State.connected_out) {
       //only CEA allowed
-      if (msg.hdr.isRequest() ||
-          msg.hdr.command_code != ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE ||
-          msg.hdr.application_id != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
-        logger.log(Level.WARNING, "Got something that wasn't a CEA");
+      if (msg.hdr.isRequest()
+              || msg.hdr.command_code != ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE
+              || msg.hdr.application_id != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
+        log.warn("Got something that wasn't a CEA");
         return false;
       }
       conn.timers.markRealActivity();
@@ -828,7 +837,7 @@ public final class Node {
     } else {
       switch (msg.hdr.command_code) {
         case ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE:
-          logger.log(Level.WARNING, "Got CER from " + conn.host_id + " after initial capability-exchange");
+          log.warn("Got CER from " + conn.host_id + " after initial capability-exchange");
           //not allowed in this state
           return false;
         case ProtocolConstants.DIAMETER_COMMAND_DEVICE_WATCHDOG:
@@ -881,8 +890,7 @@ public final class Node {
   }
 
   private void rejectLoopedRequest(final Message msg, final Connection conn) {
-    logger.log(Level.WARNING,
-        "Rejecting looped request from " + conn.peer.host() + " (command=" + msg.hdr.command_code + ").");
+    log.warn("Rejecting looped request from " + conn.peer.host() + " (command=" + msg.hdr.command_code + ").");
     rejectRequest(msg, conn, ProtocolConstants.DIAMETER_RESULT_LOOP_DETECTED);
   }
 
@@ -890,6 +898,7 @@ public final class Node {
    * A small class to ease parsing of vendor-specific-app
    */
   private static class AVP_VendorSpecificApplicationId extends AVP_Grouped {
+
     public AVP_VendorSpecificApplicationId(final AVP a) throws InvalidAVPLengthException, InvalidAVPValueException {
       super(a);
       final AVP g[] = queryAVPs();
@@ -921,7 +930,7 @@ public final class Node {
       } else {
         app_id_avp = new AVP_Unsigned32(ProtocolConstants.DI_ACCT_APPLICATION_ID, acct_app_id);
       }
-      setAVPs(new AVP[] { new AVP_Unsigned32(ProtocolConstants.DI_VENDOR_ID, vendor_id),
+      setAVPs(new AVP[]{new AVP_Unsigned32(ProtocolConstants.DI_VENDOR_ID, vendor_id),
         app_id_avp
       });
     }
@@ -959,7 +968,7 @@ public final class Node {
    * The auth-application-id, acct-application-id or
    * vendor-specific-application AVP is extracted and tested against the
    * peer's capabilities.
-   * 
+   *
    * @param msg The message
    * @param peer The peer
    * @return True if the peer should be able to handle the message.
@@ -970,8 +979,8 @@ public final class Node {
       avp = msg.find(ProtocolConstants.DI_AUTH_APPLICATION_ID);
       if (avp != null) {
         final int app = new AVP_Unsigned32(avp).queryValue();
-        if (logger.isLoggable(Level.FINE)) {
-          logger.log(Level.FINE, "auth-application-id=" + app);
+        if (log.isTraceEnabled()) {
+          log.trace("auth-application-id=" + app);
         }
         if (peer.capabilities.isAllowedAuthApp(app)) {
           return true;
@@ -987,8 +996,8 @@ public final class Node {
       avp = msg.find(ProtocolConstants.DI_ACCT_APPLICATION_ID);
       if (avp != null) {
         final int app = new AVP_Unsigned32(avp).queryValue();
-        if (logger.isLoggable(Level.FINE)) {
-          logger.log(Level.FINE, "acct-application-id=" + app);
+        if (log.isTraceEnabled()) {
+          log.trace("acct-application-id=" + app);
         }
         return peer.capabilities.isAllowedAcctApp(app);
       }
@@ -996,12 +1005,12 @@ public final class Node {
       if (avp != null) {
         final AVP_VendorSpecificApplicationId vsai = new AVP_VendorSpecificApplicationId(avp);
         final int vendor_id = vsai.vendorId();
-        if (logger.isLoggable(Level.FINE)) {
+        if (log.isTraceEnabled()) {
           if (vsai.authAppId() != null) {
-            logger.log(Level.FINE, "vendor-id=" + vendor_id + ", auth_app=" + vsai.authAppId());
+            log.trace("vendor-id=" + vendor_id + ", auth_app=" + vsai.authAppId());
           }
           if (vsai.acctAppId() != null) {
-            logger.log(Level.FINE, "vendor-id=" + vendor_id + ", acct_app=" + vsai.acctAppId());
+            log.trace("vendor-id=" + vendor_id + ", acct_app=" + vsai.acctAppId());
           }
         }
         if (vsai.authAppId() != null) {
@@ -1012,18 +1021,18 @@ public final class Node {
         }
         return false;
       }
-      logger.log(Level.WARNING, "No auth-app-id, acct-app-id nor vendor-app in packet");
+      log.warn("No auth-app-id, acct-app-id nor vendor-app in packet");
     } catch (final InvalidAVPLengthException ex) {
-      logger.log(Level.INFO, "Encountered invalid AVP length while looking at application-id", ex);
+      log.info("Encountered invalid AVP length while looking at application-id", ex);
     } catch (final InvalidAVPValueException ex) {
-      logger.log(Level.INFO, "Encountered invalid AVP value while looking at application-id", ex);
+      log.info("Encountered invalid AVP value while looking at application-id", ex);
     }
     return false;
   }
 
   private void rejectDisallowedRequest(final Message msg, final Connection conn) {
-    logger.log(Level.WARNING, "Rejecting request  from " + conn.peer.host() + " (command=" + msg.hdr.command_code
-        + ") because it is not allowed.");
+    log.warn("Rejecting request  from " + conn.peer.host() + " (command=" + msg.hdr.command_code
+            + ") because it is not allowed.");
     rejectRequest(msg, conn, ProtocolConstants.DIAMETER_RESULT_APPLICATION_UNSUPPORTED);
   }
 
@@ -1061,7 +1070,7 @@ public final class Node {
   /**
    * Generate a new session-id.
    * Implemented as makeNewSessionId(null)
-   * 
+   *
    * @since 0.9.2
    */
   public String makeNewSessionId() {
@@ -1075,7 +1084,7 @@ public final class Node {
    * The optional part can be anything. The caller provide some
    * information that will be helpful in debugging in production
    * environments, such as user-name or calling-station-id.
-   * 
+   *
    * @since 0.9.2
    */
   public String makeNewSessionId(final String optional_part) {
@@ -1089,7 +1098,7 @@ public final class Node {
 
   /**
    * Returns the node's state-id.
-   * 
+   *
    * @since 0.9.2
    */
   public int stateId() {
@@ -1099,8 +1108,7 @@ public final class Node {
   private boolean doElection(final String cer_host_id) {
     final int cmp = settings.hostId().compareTo(cer_host_id);
     if (cmp == 0) {
-      logger.log(Level.WARNING,
-          "Got CER with host-id=" + cer_host_id + ". Suspecting this is a connection from ourselves.");
+      log.warn("Got CER with host-id=" + cer_host_id + ". Suspecting this is a connection from ourselves.");
       //this is a misconfigured peer or ourselves.
       return false;
     }
@@ -1108,10 +1116,12 @@ public final class Node {
     synchronized (map_key_conn) {
       for (final Map.Entry<ConnectionKey, Connection> e : map_key_conn.entrySet()) {
         final Connection conn = e.getValue();
-        if (conn.host_id != null && conn.host_id.equals(cer_host_id) &&
-            conn.state == Connection.State.ready //TODO: what about TLS?
-        ) {
-          logger.log(Level.INFO, "New connection to a peer we already have a connection to (" + cer_host_id + ")");
+        if (conn.host_id != null && conn.host_id.equals(cer_host_id)
+                && conn.state == Connection.State.ready //TODO: what about TLS?
+                ) {
+          if (log.isInfoEnabled()) {
+            log.info("New connection to a peer we already have a connection to (" + cer_host_id + ")");
+          }
           if (close_other_connection) {
             closeConnection(conn);
             return true;
@@ -1125,18 +1135,22 @@ public final class Node {
   }
 
   private boolean handleCER(final Message msg, final Connection conn) {
-    logger.log(Level.FINE, "CER received from " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("CER received from " + conn.host_id);
+    }
     //Handle election
     String host_id;
     {
       final AVP avp = msg.find(ProtocolConstants.DI_ORIGIN_HOST);
       if (avp == null) {
         //Origin-Host-Id is missing
-        logger.log(Level.FINE, "CER from " + conn.host_id + " is missing the Origin-Host_id AVP. Rejecting.");
+        if (log.isTraceEnabled()) {
+          log.trace("CER from " + conn.host_id + " is missing the Origin-Host_id AVP. Rejecting.");
+        }
         final Message error_response = new Message();
         error_response.prepareResponse(msg);
         error_response
-            .add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_MISSING_AVP));
+                .add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_MISSING_AVP));
         addOurHostAndRealm(error_response);
         error_response.add(new AVP_FailedAVP(new AVP_UTF8String(ProtocolConstants.DI_ORIGIN_HOST, "")));
         Utils.setMandatory_RFC3588(error_response);
@@ -1144,22 +1158,26 @@ public final class Node {
         return false;
       }
       host_id = new AVP_UTF8String(avp).queryValue();
-      logger.log(Level.FINER, "Peer's origin-host-id is " + host_id);
+      if (log.isTraceEnabled()) {
+        log.trace("Peer's origin-host-id is " + host_id);
+      }
 
       //We must authenticate the host before doing election.
       //Otherwise a rogue node could trick us into
       //disconnecting legitimate peers.
-      final NodeValidator.AuthenticationResult ar =
-          node_validator.authenticateNode(host_id, conn.getRelevantNodeAuthInfo());
+      final NodeValidator.AuthenticationResult ar
+              = node_validator.authenticateNode(host_id, conn.getRelevantNodeAuthInfo());
       if (ar == null || !ar.known) {
-        logger.log(Level.FINE, "We do not know " + conn.host_id + " Rejecting.");
+        if (log.isTraceEnabled()) {
+          log.trace("We do not know " + conn.host_id + " Rejecting.");
+        }
         final Message error_response = new Message();
         error_response.prepareResponse(msg);
         if (ar != null && ar.result_code != null) {
           error_response.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ar.result_code));
         } else {
           error_response.add(
-              new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNKNOWN_PEER));
+                  new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNKNOWN_PEER));
         }
         addOurHostAndRealm(error_response);
         if (ar != null && ar.error_message != null) {
@@ -1172,11 +1190,13 @@ public final class Node {
       }
 
       if (!doElection(host_id)) {
-        logger.log(Level.FINE, "CER from " + conn.host_id + " lost the election. Rejecting.");
+        if (log.isTraceEnabled()) {
+          log.trace("CER from " + conn.host_id + " lost the election. Rejecting.");
+        }
         final Message error_response = new Message();
         error_response.prepareResponse(msg);
         error_response.add(
-            new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_ELECTION_LOST));
+                new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_ELECTION_LOST));
         addOurHostAndRealm(error_response);
         Utils.setMandatory_RFC3588(error_response);
         sendMessage(error_response, conn);
@@ -1196,7 +1216,9 @@ public final class Node {
       cea.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_SUCCESS));
       addCEStuff(cea, conn.peer.capabilities, conn);
 
-      logger.log(Level.INFO, "Connection to " + conn.peer.toString() + " is now ready");
+      if (log.isInfoEnabled()) {
+        log.info("Connection to " + conn.peer.toString() + " is now ready");
+      }
       Utils.setMandatory_RFC3588(cea);
       sendMessage(cea, conn);
       conn.state = Connection.State.ready;
@@ -1211,34 +1233,39 @@ public final class Node {
   }
 
   private boolean handleCEA(final Message msg, final Connection conn) {
-    logger.log(Level.FINE, "CEA received from " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("CEA received from " + conn.host_id);
+    }
     AVP avp = msg.find(ProtocolConstants.DI_RESULT_CODE);
     if (avp == null) {
-      logger.log(Level.WARNING, "CEA from " + conn.host_id
-          + " did not contain a Result-Code AVP (violation of RFC3588 section 5.3.2 page 61). Dropping connection");
+      log.warn("CEA from " + conn.host_id
+              + " did not contain a Result-Code AVP (violation of RFC3588 section 5.3.2 page 61). Dropping connection");
       return false;
     }
     int result_code;
     try {
       result_code = new AVP_Unsigned32(avp).queryValue();
     } catch (final InvalidAVPLengthException ex) {
-      logger.log(Level.INFO,
-          "CEA from " + conn.host_id + " contained an ill-formed Result-Code. Dropping connection");
+      if (log.isInfoEnabled()) {
+        log.info("CEA from " + conn.host_id + " contained an ill-formed Result-Code. Dropping connection");
+      }
       return false;
     }
     if (result_code != ProtocolConstants.DIAMETER_RESULT_SUCCESS) {
-      logger.log(Level.INFO,
-          "CEA from " + conn.host_id + " was rejected with Result-Code " + result_code + ". Dropping connection");
+      if (log.isInfoEnabled()) {
+        log.info("CEA from " + conn.host_id + " was rejected with Result-Code " + result_code + ". Dropping connection");
+      }
       return false;
     }
     avp = msg.find(ProtocolConstants.DI_ORIGIN_HOST);
     if (avp == null) {
-      logger.log(Level.WARNING,
-          "Peer did not include origin-host-id in CEA (violation of RFC3588 section 5.3.2 page 61). Dropping connection");
+      log.warn("Peer did not include origin-host-id in CEA (violation of RFC3588 section 5.3.2 page 61). Dropping connection");
       return false;
     }
     final String host_id = new AVP_UTF8String(avp).queryValue();
-    logger.log(Level.FINER, "Node:Peer's origin-host-id is '" + host_id + "'. Expected: '" + conn.host_id + "'");
+    if (log.isTraceEnabled()) {
+      log.trace("Node:Peer's origin-host-id is '" + host_id + "'. Expected: '" + conn.host_id + "'");
+    }
 
     conn.peer = conn.toPeer();
     conn.peer.host(host_id);
@@ -1246,7 +1273,9 @@ public final class Node {
     final boolean rc = handleCEx(msg, conn);
     if (rc) {
       conn.state = Connection.State.ready;
-      logger.log(Level.INFO, "Connection to " + conn.peer.toString() + " is now ready");
+      if (log.isInfoEnabled()) {
+        log.info("Connection to " + conn.peer.toString() + " is now ready");
+      }
       connection_listener.handle(conn.key, conn.peer, true);
       synchronized (obj_conn_wait) {
         obj_conn_wait.notifyAll();
@@ -1258,25 +1287,31 @@ public final class Node {
   }
 
   private boolean handleCEx(final Message msg, final Connection conn) {
-    logger.log(Level.FINER, "Processing CER/CEA");
+    log.trace("Processing CER/CEA");
     //calculate capabilities and allowed applications
     try {
       final Capability reported_capabilities = new Capability();
       for (final AVP a : msg.subset(ProtocolConstants.DI_SUPPORTED_VENDOR_ID)) {
         final int vendor_id = new AVP_Unsigned32(a).queryValue();
-        logger.log(Level.FINEST, "peer supports vendor " + vendor_id);
+        if (log.isTraceEnabled()) {
+          log.trace("peer supports vendor " + vendor_id);
+        }
         reported_capabilities.addSupportedVendor(vendor_id);
       }
       for (final AVP a : msg.subset(ProtocolConstants.DI_AUTH_APPLICATION_ID)) {
         final int app = new AVP_Unsigned32(a).queryValue();
-        logger.log(Level.FINEST, "peer supports auth-app " + app);
+        if (log.isTraceEnabled()) {
+          log.trace("peer supports auth-app " + app);
+        }
         if (app != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
           reported_capabilities.addAuthApp(app);
         }
       }
       for (final AVP a : msg.subset(ProtocolConstants.DI_ACCT_APPLICATION_ID)) {
         final int app = new AVP_Unsigned32(a).queryValue();
-        logger.log(Level.FINEST, "peer supports acct-app " + app);
+        if (log.isTraceEnabled()) {
+          log.trace("peer supports acct-app " + app);
+        }
         if (app != ProtocolConstants.DIAMETER_APPLICATION_COMMON) {
           reported_capabilities.addAcctApp(app);
         }
@@ -1292,9 +1327,9 @@ public final class Node {
         }
       }
 
-      final Capability result_capabilities =
-          node_validator.authorizeNode(conn.host_id, settings, reported_capabilities);
-      if (logger.isLoggable(Level.FINEST)) {
+      final Capability result_capabilities
+              = node_validator.authorizeNode(conn.host_id, settings, reported_capabilities);
+      if (log.isTraceEnabled()) {
         String s = "";
         for (final Integer i : result_capabilities.supported_vendor) {
           s = s + "  supported_vendor " + i + "\n";
@@ -1311,15 +1346,15 @@ public final class Node {
         for (final Capability.VendorApplication va : result_capabilities.acct_vendor) {
           s = s + "  vendor_acct_app: vendor " + va.vendor_id + ", application " + va.application_id + "\n";
         }
-        logger.log(Level.FINEST, "Resulting capabilities:\n" + s);
+        log.trace("Resulting capabilities:\n" + s);
       }
       if (result_capabilities.isEmpty()) {
-        logger.log(Level.WARNING, "No application in common with " + conn.host_id);
+        log.warn("No application in common with " + conn.host_id);
         if (msg.hdr.isRequest()) {
           final Message error_response = new Message();
           error_response.prepareResponse(msg);
           error_response.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE,
-              ProtocolConstants.DIAMETER_RESULT_NO_COMMON_APPLICATION));
+                  ProtocolConstants.DIAMETER_RESULT_NO_COMMON_APPLICATION));
           addOurHostAndRealm(error_response);
           Utils.setMandatory_RFC3588(error_response);
           sendMessage(error_response, conn);
@@ -1329,12 +1364,12 @@ public final class Node {
 
       conn.peer.capabilities = result_capabilities;
     } catch (final InvalidAVPLengthException ex) {
-      logger.log(Level.WARNING, "Invalid AVP in CER/CEA", ex);
+      log.warn("Invalid AVP in CER/CEA", ex);
       if (msg.hdr.isRequest()) {
         final Message error_response = new Message();
         error_response.prepareResponse(msg);
         error_response.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE,
-            ProtocolConstants.DIAMETER_RESULT_INVALID_AVP_LENGTH));
+                ProtocolConstants.DIAMETER_RESULT_INVALID_AVP_LENGTH));
         addOurHostAndRealm(error_response);
         error_response.add(new AVP_FailedAVP(ex.avp));
         Utils.setMandatory_RFC3588(error_response);
@@ -1342,12 +1377,12 @@ public final class Node {
       }
       return false;
     } catch (final InvalidAVPValueException ex) {
-      logger.log(Level.WARNING, "Invalid AVP in CER/CEA", ex);
+      log.warn("Invalid AVP in CER/CEA", ex);
       if (msg.hdr.isRequest()) {
         final Message error_response = new Message();
         error_response.prepareResponse(msg);
         error_response.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE,
-            ProtocolConstants.DIAMETER_RESULT_INVALID_AVP_VALUE));
+                ProtocolConstants.DIAMETER_RESULT_INVALID_AVP_VALUE));
         addOurHostAndRealm(error_response);
         error_response.add(new AVP_FailedAVP(ex.avp));
         Utils.setMandatory_RFC3588(error_response);
@@ -1363,7 +1398,9 @@ public final class Node {
   }
 
   private void sendCER(final Connection conn) {
-    logger.log(Level.FINE, "Sending CER to " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("Sending CER to " + conn.host_id);
+    }
     final Message cer = new Message();
     cer.hdr.setRequest(true);
     cer.hdr.command_code = ProtocolConstants.DIAMETER_COMMAND_CAPABILITIES_EXCHANGE;
@@ -1419,7 +1456,9 @@ public final class Node {
   }
 
   private boolean handleDWR(final Message msg, final Connection conn) {
-    logger.log(Level.INFO, "DWR received from " + conn.host_id);
+    if (log.isInfoEnabled()) {
+      log.info("DWR received from " + conn.host_id);
+    }
     conn.timers.markDWR();
     final Message dwa = new Message();
     dwa.prepareResponse(msg);
@@ -1433,13 +1472,17 @@ public final class Node {
   }
 
   private boolean handleDWA(final Message msg, final Connection conn) {
-    logger.log(Level.FINE, "DWA received from " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("DWA received from " + conn.host_id);
+    }
     conn.timers.markDWA();
     return true;
   }
 
   private boolean handleDPR(final Message msg, final Connection conn) {
-    logger.log(Level.FINE, "DPR received from " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("DPR received from " + conn.host_id);
+    }
     final Message dpa = new Message();
     dpa.prepareResponse(msg);
     dpa.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_SUCCESS));
@@ -1452,21 +1495,27 @@ public final class Node {
 
   private boolean handleDPA(final Message msg, final Connection conn) {
     if (conn.state == Connection.State.closing) {
-      logger.log(Level.INFO, "Got a DPA from " + conn.host_id);
+      if (log.isInfoEnabled()) {
+        log.info("Got a DPA from " + conn.host_id);
+      }
     } else {
-      logger.log(Level.WARNING, "Got a DPA. This is not expected (state=" + conn.state + ")");
+      log.warn("Got a DPA. This is not expected (state=" + conn.state + ")");
     }
     return false; //in any case close the connection
   }
 
   private boolean handleUnknownRequest(final Message msg, final Connection conn) {
-    logger.log(Level.INFO, "Unknown request received from " + conn.host_id);
+    if (log.isInfoEnabled()) {
+      log.info("Unknown request received from " + conn.host_id);
+    }
     rejectRequest(msg, conn, ProtocolConstants.DIAMETER_RESULT_UNABLE_TO_DELIVER);
     return true;
   }
 
   private void sendDWR(final Connection conn) {
-    logger.log(Level.FINE, "Sending DWR to " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("Sending DWR to " + conn.host_id);
+    }
     final Message dwr = new Message();
     dwr.hdr.setRequest(true);
     dwr.hdr.command_code = ProtocolConstants.DIAMETER_COMMAND_DEVICE_WATCHDOG;
@@ -1483,7 +1532,9 @@ public final class Node {
   }
 
   private void sendDPR(final Connection conn, final int why) {
-    logger.log(Level.FINE, "Sending DPR to " + conn.host_id);
+    if (log.isTraceEnabled()) {
+      log.trace("Sending DPR to " + conn.host_id);
+    }
     final Message dpr = new Message();
     dpr.hdr.setRequest(true);
     dpr.hdr.command_code = ProtocolConstants.DIAMETER_COMMAND_DISCONNECT_PEER;

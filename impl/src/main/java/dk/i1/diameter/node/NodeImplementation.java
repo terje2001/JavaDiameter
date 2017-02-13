@@ -1,6 +1,5 @@
 package dk.i1.diameter.node;
 
-import java.util.logging.Logger;
 import dk.i1.diameter.Message;
 
 /**
@@ -8,14 +7,13 @@ import dk.i1.diameter.Message;
  * This class acts a a common superclass for the TCPNode and SCTPNode classes.
  */
 abstract class NodeImplementation {
+
   private final Node node;
   protected NodeSettings settings;
-  protected Logger logger;
 
-  NodeImplementation(final Node node, final NodeSettings settings, final Logger logger) {
+  NodeImplementation(final Node node, final NodeSettings settings) {
     this.node = node;
     this.settings = settings;
-    this.logger = logger;
   }
 
   abstract void openIO() throws java.io.IOException;

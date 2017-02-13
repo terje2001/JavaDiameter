@@ -3,7 +3,6 @@ package dk.i1.diameter.session;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.logging.Level;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Time;
 import dk.i1.diameter.AVP_UTF8String;
@@ -12,6 +11,7 @@ import dk.i1.diameter.AVP_Unsigned64;
 import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.Utils;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A utility class for dealing with accounting.
@@ -22,7 +22,9 @@ import dk.i1.diameter.Utils;
  * SubSession instances and/or override the collectACRInfo() method.
  * Acct-Realtime-Required semantics are not directly supported.
  */
+@Slf4j
 public final class ACHandler {
+
   private final BaseSession base_session;
   private long subsession_sequencer;
   private int accounting_record_number;
@@ -42,6 +44,7 @@ public final class ACHandler {
    * usage information is received for the user.
    */
   public static class SubSession {
+
     final long subsession_id;
     boolean start_sent;
     public long interim_interval;
@@ -70,7 +73,7 @@ public final class ACHandler {
 
   /**
    * Constructor for ACHandler
-   * 
+   *
    * @param base_session The BaseSession (or subclass thereof) for which
    *        the accounting should be produced.
    */
@@ -115,7 +118,7 @@ public final class ACHandler {
    * Creates a subsession with a unique sub-session-id. It is the
    * responsibility of the caller call startSubSession() afterward.
    * The Sub-session is not automatically started.
-   * 
+   *
    * @return ID of the sub-session
    */
   public long createSubSession() {
@@ -126,7 +129,7 @@ public final class ACHandler {
 
   /**
    * Retrieve a sub-session by id
-   * 
+   *
    * @param subsession_id The sub-session id
    * @return The sub-session, or null if not found.
    */
@@ -137,7 +140,7 @@ public final class ACHandler {
   /**
    * Start sub-session accounting for the specified sub-session.
    * This will result in the ACR start-record being sent.
-   * 
+   *
    * @param subsession_id The sub-session id
    */
   public void startSubSession(final long subsession_id) {
@@ -158,7 +161,7 @@ public final class ACHandler {
    * Stop a sub-session.
    * The sub-session is stopped (accounting-stop ACR will be generated)
    * and the sub-session will be removed.
-   * 
+   *
    * @param subsession_id The sub-session id
    */
   public void stopSubSession(final long subsession_id) {
@@ -320,8 +323,9 @@ public final class ACHandler {
     } catch (final dk.i1.diameter.node.NotARequestException ex) {
       //never happens
     } catch (final dk.i1.diameter.node.NotRoutableException ex) {
-      base_session.sessionManager().logger.log(Level.INFO,
-          "Could not send ACR for session " + base_session.sessionId() + " :" + ex.toString());
+      if (log.isInfoEnabled()) {
+        log.info("Could not send ACR for session " + base_session.sessionId() + " :" + ex.toString());
+      }
       //peer unavailable?
       handleACA(null);
     }

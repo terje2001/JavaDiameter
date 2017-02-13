@@ -1,12 +1,11 @@
 package dk.i1.diameter.session;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Unsigned32;
 import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.Utils;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A session type that uses the AA messages for authentication/authorization
@@ -17,8 +16,8 @@ import dk.i1.diameter.Utils;
  * packets) by putting "dk.i1.diameter.session.AASession.level = ALL" into your
  * log.properties file (or equivalent)
  */
+@Slf4j
 public class AASession extends BaseSession {
-  static private Logger logger = Logger.getLogger("dk.i1.diameter.session.AASession");
 
   public AASession(final int auth_app_id, final SessionManager session_manager) {
     super(auth_app_id, session_manager);
@@ -55,8 +54,9 @@ public class AASession extends BaseSession {
         if (authInProgress()) {
           authFailed(null);
         } else {
-          logger.log(Level.INFO,
-              "Got a non-answer AA for session '" + sessionId() + "' when no reauth was progress.");
+          if (log.isInfoEnabled()) {
+            log.info("Got a non-answer AA for session '" + sessionId() + "' when no reauth was progress.");
+          }
         }
         break;
       default:
@@ -73,7 +73,7 @@ public class AASession extends BaseSession {
    * If the result-code is anything else then the session is also closed.
    */
   public void handleAAA(final Message msg) {
-    logger.log(Level.FINER, "Handling AAA");
+    log.trace("Handling AAA");
     if (!authInProgress()) {
       return;
     }
@@ -96,7 +96,9 @@ public class AASession extends BaseSession {
         sendAAR();
         break;
       case ProtocolConstants.DIAMETER_RESULT_AUTHORIZATION_REJECTED:
-        logger.log(Level.INFO, "Authorization for session " + sessionId() + " rejected, closing session");
+        if (log.isInfoEnabled()) {
+          log.info("Authorization for session " + sessionId() + " rejected, closing session");
+        }
         if (state() == State.pending) {
           closeSession(msg, ProtocolConstants.DI_TERMINATION_CAUSE_DIAMETER_BAD_ANSWER);
         } else {
@@ -104,7 +106,9 @@ public class AASession extends BaseSession {
         }
         break;
       default:
-        logger.log(Level.INFO, "AAR failed, result_code=" + result_code);
+        if (log.isInfoEnabled()) {
+          log.info("AAR failed, result_code=" + result_code);
+        }
         closeSession(msg, ProtocolConstants.DI_TERMINATION_CAUSE_DIAMETER_BAD_ANSWER);
         break;
     }
@@ -121,11 +125,15 @@ public class AASession extends BaseSession {
   }
 
   private final void sendAAR() {
-    logger.log(Level.FINE, "Considering sending AAR for " + sessionId());
+    if (log.isTraceEnabled()) {
+      log.trace("Considering sending AAR for " + sessionId());
+    }
     if (authInProgress()) {
       return;
     }
-    logger.log(Level.FINE, "Sending AAR for " + sessionId());
+    if (log.isTraceEnabled()) {
+      log.trace("Sending AAR for " + sessionId());
+    }
     authInProgress(true);
     final Message aar = new Message();
     aar.hdr.setRequest(true);
@@ -136,11 +144,13 @@ public class AASession extends BaseSession {
     Utils.setMandatory_RFC3588(aar);
     try {
       sessionManager().sendRequest(aar, this, null);
-      //logger.log(Level.FINER,"AAR sent");
+      //log.trace("AAR sent");
     } catch (final dk.i1.diameter.node.NotARequestException ex) {
       //never happens
     } catch (final dk.i1.diameter.node.NotRoutableException ex) {
-      logger.log(Level.INFO, "Could not send AAR for session " + sessionId(), ex);
+      if (log.isInfoEnabled()) {
+        log.info("Could not send AAR for session " + sessionId(), ex);
+      }
       authFailed(null);
     }
   }
@@ -151,7 +161,7 @@ public class AASession extends BaseSession {
    * information such as user-name, password, credenticals, etc.
    * This implementation calls {@link BaseSession#addCommonStuff} and adds the auth-application-id.
    * A subclass probably want to call this method first and then add the session-specific AVPs, eg:
-   * 
+   *
    * <pre>
      void collectAARInfo(Message request) { <i>//method in your session class</i>
          AASession.collectAARInfo(request);
@@ -173,7 +183,7 @@ public class AASession extends BaseSession {
    * Subclasses probably want to override this to add additional processing.
    */
   protected boolean processAAAInfo(final Message answer) {
-    logger.log(Level.FINE, "Processing AAA info");
+    log.trace("Processing AAA info");
     //subclasses probably want to override this
 
     //grab a few AVPs
@@ -201,11 +211,15 @@ public class AASession extends BaseSession {
       }
 
       final long now = System.currentTimeMillis();
-      logger.log(Level.FINER, "Session " + sessionId() + ": now=" + now + "  auth_lifetime=" + auth_lifetime
-          + " auth_grace_period=" + auth_grace_period);
+      if (log.isTraceEnabled()) {
+        log.trace("Session " + sessionId() + ": now=" + now + "  auth_lifetime=" + auth_lifetime
+                + " auth_grace_period=" + auth_grace_period);
+      }
       session_auth_timers.updateTimers(now, auth_lifetime, auth_grace_period);
-      logger.log(Level.FINER, "getNextReauthTime=" + session_auth_timers.getNextReauthTime() + " getMaxTimeout="
-          + session_auth_timers.getMaxTimeout());
+      if (log.isTraceEnabled()) {
+        log.trace("getNextReauthTime=" + session_auth_timers.getNextReauthTime() + " getMaxTimeout="
+                + session_auth_timers.getMaxTimeout());
+      }
     } catch (final dk.i1.diameter.InvalidAVPLengthException ex) {
       return false;
     }

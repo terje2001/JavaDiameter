@@ -6,9 +6,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-// import java.util.Iterator;
 import dk.i1.diameter.Message;
 import dk.i1.sctp.AssociationId;
 import dk.i1.sctp.OneToManySCTPSocket;
@@ -21,8 +18,11 @@ import dk.i1.sctp.SCTPSocket;
 import dk.i1.sctp.WouldBlockException;
 import dk.i1.sctp.sctp_event_subscribe;
 import dk.i1.sctp.sctp_paddrparams;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 final class SCTPNode extends NodeImplementation {
+
   static {
     //Create a socket and drop it. This makes the class loading in Node fail sooner
     try {
@@ -40,6 +40,7 @@ final class SCTPNode extends NodeImplementation {
   //connection attempt and postpone the rest.
 
   private static class OutstandingConnection {
+
     SCTPConnection conn;
     Peer peer;
     InetAddress address;
@@ -54,8 +55,8 @@ final class SCTPNode extends NodeImplementation {
 
   private boolean any_queued_messages;
 
-  public SCTPNode(final Node node, final NodeSettings settings, final Logger logger) {
-    super(node, settings, logger);
+  public SCTPNode(final Node node, final NodeSettings settings) {
+    super(node, settings);
     map = new HashMap<AssociationId, SCTPConnection>();
     outstanding_connections = new LinkedList<OutstandingConnection>();
     any_queued_messages = false;
@@ -78,58 +79,59 @@ final class SCTPNode extends NodeImplementation {
 
   @Override
   void start() {
-    logger.log(Level.FINEST, "Starting SCTP node");
+    log.trace("Starting SCTP node");
     please_stop = false;
     node_thread = new SelectThread();
     node_thread.setDaemon(true);
     node_thread.start();
-    logger.log(Level.FINEST, "Started SCTP node");
+    log.trace("Started SCTP node");
   }
 
   @Override
   void wakeup() {
-    logger.log(Level.FINEST, "Waking up selector thread");
+    log.trace("Waking up selector thread");
     try {
       sctp_socket.wakeup();
     } catch (final java.net.SocketException ex) {
-      logger.log(Level.WARNING, "Could not wake up SCTP service thread", ex);
+      log.warn("Could not wake up SCTP service thread", ex);
     }
   }
 
   @Override
   void initiateStop(final long shutdown_deadline) {
-    logger.log(Level.FINEST, "Initiating stop of SCTP node");
+    log.trace("Initiating stop of SCTP node");
     please_stop = true;
     this.shutdown_deadline = shutdown_deadline;
-    logger.log(Level.FINEST, "Initiated stop of SCTP node");
+    log.trace("Initiated stop of SCTP node");
   }
 
   @Override
   void join() {
-    logger.log(Level.FINEST, "Joining node_thread thread");
+    log.trace("Joining node_thread thread");
     try {
       node_thread.join();
     } catch (final InterruptedException ex) {
     }
     node_thread = null;
-    logger.log(Level.FINEST, "Selector thread joined");
+    log.trace("Selector thread joined");
   }
 
   @Override
   void closeIO() {
-    logger.log(Level.FINEST, "Closing SCTP socket");
+    log.trace("Closing SCTP socket");
     if (sctp_socket != null) {
       try {
         sctp_socket.close();
       } catch (final java.net.SocketException ex) {
-        logger.log(Level.WARNING, "Error closing SCTP socket", ex);
+        log.warn("Error closing SCTP socket", ex);
       }
     }
     sctp_socket = null;
-    logger.log(Level.FINEST, "Closed SCTP socket");
+    log.trace("Closed SCTP socket");
   }
 
   private class SelectThread extends Thread {
+
     public SelectThread() {
       super("DiameterNode thread (SCTP)");
     }
@@ -196,11 +198,11 @@ final class SCTPNode extends NodeImplementation {
 
         /*
          * if(key.isAcceptable()) {
-         * logger.log(Level.FINE,"Got an inbound connection (key is acceptable)");
+         * log.trace("Got an inbound connection (key is acceptable)");
          * ServerSocketChannel server = (ServerSocketChannel)key.channel();
          * SocketChannel channel = server.accept();
          * InetSocketAddress address = (InetSocketAddress)channel.socket().getRemoteSocketAddress();
-         * logger.log(Level.INFO,"Got an inbound connection from " + address.toString());
+         * log.info("Got an inbound connection from " + address.toString());
          * if(!please_stop) {
          * TCPConnection conn = new TCPConnection(TCPNode.this,settings.watchdogInterval(),settings.idleTimeout());
          * conn.host_id = address.getAddress().getHostAddress();
@@ -215,18 +217,18 @@ final class SCTPNode extends NodeImplementation {
          * channel.close();
          * }
          * } else if(key.isConnectable()) {
-         * logger.log(Level.FINE,"An outbound connection is ready (key is connectable)");
+         * log.trace("An outbound connection is ready (key is connectable)");
          * SocketChannel channel = (SocketChannel)key.channel();
          * TCPConnection conn = (TCPConnection)key.attachment();
          * try {
          * if(channel.finishConnect()) {
-         * logger.log(Level.FINEST,"Connected!");
+         * log.trace("Connected!");
          * conn.state = Connection.State.connected_out;
          * channel.register(selector, SelectionKey.OP_READ, conn);
          * initiateCER(conn);
          * }
          * } catch(java.io.IOException ex) {
-         * logger.log(Level.WARNING,"Connection to '"+conn.host_id+"' failed", ex);
+         * log.warn("Connection to '"+conn.host_id+"' failed", ex);
          * try {
          * channel.register(selector, 0);
          * channel.close();
@@ -234,7 +236,7 @@ final class SCTPNode extends NodeImplementation {
          * unregisterConnection(conn);
          * }
          * } else if(key.isReadable()) {
-         * logger.log(Level.FINEST,"Key is readable");
+         * log.trace("Key is readable");
          * //System.out.println("key is readable");
          * SocketChannel channel = (SocketChannel)key.channel();
          * TCPConnection conn = (TCPConnection)key.attachment();
@@ -243,7 +245,7 @@ final class SCTPNode extends NodeImplementation {
          * conn.hasNetOutput())
          * channel.register(selector, SelectionKey.OP_READ|SelectionKey.OP_WRITE, conn);
          * } else if(key.isWritable()) {
-         * logger.log(Level.FINEST,"Key is writable");
+         * log.trace("Key is writable");
          * SocketChannel channel = (SocketChannel)key.channel();
          * TCPConnection conn = (TCPConnection)key.attachment();
          * synchronized(getLockObject()) {
@@ -266,20 +268,20 @@ final class SCTPNode extends NodeImplementation {
   }
 
   private void processChunk(final SCTPChunk chunk) {
-    logger.log(Level.FINEST, "processChunk()...");
+    log.trace("processChunk()...");
 
     if (chunk instanceof SCTPData) {
-      logger.log(Level.FINEST, "Data chunk received");
+      log.trace("Data chunk received");
       final SCTPData data = (SCTPData) chunk;
       final AssociationId assoc_id = data.sndrcvinfo.sinfo_assoc_id;
       final SCTPConnection conn = map.get(assoc_id);
       processDataChunk(conn, data);
     } else if (chunk instanceof SCTPNotification) {
       final SCTPNotification notification = (SCTPNotification) chunk;
-      logger.log(Level.FINEST, "Notification chunk received");
+      log.trace("Notification chunk received");
       processNotificationChunk(notification);
     } else {
-      logger.log(Level.WARNING, "Received unknown SCTP chunk from SCTP socket:" + chunk.toString());
+      log.warn("Received unknown SCTP chunk from SCTP socket:" + chunk.toString());
     }
   }
 
@@ -305,7 +307,7 @@ final class SCTPNode extends NodeImplementation {
         logRawDecodedPacket(raw, 0, msg_size);
         final boolean b = handleMessage(msg, conn);
         if (!b) {
-          logger.log(Level.FINER, "handle error");
+          log.trace("handle error");
           closeConnection(conn);
           return;
         }
@@ -327,17 +329,17 @@ final class SCTPNode extends NodeImplementation {
       //	SCTPNotificationAdaptationIndication sai=(SCTPNotificationAdaptationIndication)notification;
       //	AssociationId assoc_id = sai.sai_assoc_id;
       //	SCTPConnection conn=map.get(assoc_id);
-      //	logger.log(Level.INFO,"Got adaptation notification from "+(conn?conn.host_id:"unknown host")+" (association "+assoc_id.toString()+")");
+      //	log.info("Got adaptation notification from "+(conn?conn.host_id:"unknown host")+" (association "+assoc_id.toString()+")");
       //	break;
       //}
       case SCTP_ASSOC_CHANGE: {
-        logger.log(Level.FINEST, "Association-change notification received");
+        log.trace("Association-change notification received");
         final SCTPNotificationAssociationChange sac = (SCTPNotificationAssociationChange) notification;
         final AssociationId assoc_id = sac.sac_assoc_id;
         if (sac.sac_state == SCTPNotificationAssociationChange.State.SCTP_COMM_UP) {
           //Find the relevant connection
           //quite nasty
-          logger.log(Level.FINE, "Got an association");
+          log.trace("Got an association");
           InetAddress address = null;
           Collection<InetAddress> coll_address = null;
           int port;
@@ -349,17 +351,19 @@ final class SCTPNode extends NodeImplementation {
             }
             port = sctp_socket.getPeerInetPort(assoc_id);
           } catch (final java.net.SocketException ex) {
-            logger.log(Level.WARNING, "Caught SocketException while retrieving SCTP peer address", ex);
+            log.warn("Caught SocketException while retrieving SCTP peer address", ex);
             try {
               sctp_socket.disconnect(assoc_id, true);
             } catch (final java.net.SocketException ex2) {
             }
             return;
           }
-          if (address != null) {
-            logger.log(Level.INFO, "Got an association connection from " + address.toString() + " port " + port);
-          } else {
-            logger.log(Level.INFO, "Got an association connection from <unknown> port " + port);
+          if (log.isInfoEnabled()) {
+            if (address != null) {
+              log.info("Got an association connection from " + address.toString() + " port " + port);
+            } else {
+              log.info("Got an association connection from <unknown> port " + port);
+            }
           }
 
           SCTPConnection conn = null;
@@ -367,13 +371,15 @@ final class SCTPNode extends NodeImplementation {
             //Maybe it was one we initiated
             final OutstandingConnection oc = outstanding_connections.peek();
             for (final InetAddress a : coll_address) {
-              if (a.equals(oc.address) &&
-                  port == oc.peer.port()) {
+              if (a.equals(oc.address)
+                      && port == oc.peer.port()) {
                 //Yes, it was our outstanding connection
                 outstanding_connections.removeFirst();
                 scheduleNextConnection();
                 conn = oc.conn;
-                logger.log(Level.FINE, "Outstading connection to " + conn.host_id + " completed");
+                if (log.isTraceEnabled()) {
+                  log.trace("Outstading connection to " + conn.host_id + " completed");
+                }
               }
             }
           }
@@ -414,7 +420,9 @@ final class SCTPNode extends NodeImplementation {
             }
           }
         } else if (sac.sac_state == SCTPNotificationAssociationChange.State.SCTP_RESTART) {
-          logger.log(Level.INFO, "Received sctp-restart notification on association " + assoc_id);
+          if (log.isInfoEnabled()) {
+            log.info("Received sctp-restart notification on association " + assoc_id);
+          }
           SCTPConnection conn = map.get(assoc_id);
           if (conn != null) {
             //The association is already gone
@@ -442,17 +450,19 @@ final class SCTPNode extends NodeImplementation {
             }
             port = sctp_socket.getPeerInetPort(assoc_id);
           } catch (final java.net.SocketException ex) {
-            logger.log(Level.WARNING, "Caught SocketException while retrieving SCTP peer address", ex);
+            log.warn("Caught SocketException while retrieving SCTP peer address", ex);
             try {
               sctp_socket.disconnect(assoc_id, true);
             } catch (final java.net.SocketException ex2) {
             }
             return;
           }
-          if (address != null) {
-            logger.log(Level.INFO, "Got an restarted connection from " + address.toString() + " port " + port);
-          } else {
-            logger.log(Level.INFO, "Got an restarted connection from <unknown> port " + port);
+          if (log.isInfoEnabled()) {
+            if (address != null) {
+              log.info("Got an restarted connection from " + address.toString() + " port " + port);
+            } else {
+              log.info("Got an restarted connection from <unknown> port " + port);
+            }
           }
           //Not one we initiated, so it is an inbound connection
           conn = new SCTPConnection(this, settings.watchdogInterval(), settings.idleTimeout());
@@ -476,22 +486,29 @@ final class SCTPNode extends NodeImplementation {
           SCTPConnection conn = map.get(assoc_id);
           switch (sac.sac_state) {
             case SCTP_COMM_LOST:
-              logger.log(Level.INFO, "Received sctp-comm-lost notification on association " + assoc_id);
+              if (log.isInfoEnabled()) {
+                log.info("Received sctp-comm-lost notification on association " + assoc_id);
+              }
               break;
             case SCTP_SHUTDOWN_COMP:
-              logger.log(Level.INFO, "Received sctp-shutdown-comp notification on association " + assoc_id);
+              if (log.isInfoEnabled()) {
+                log.info("Received sctp-shutdown-comp notification on association " + assoc_id);
+              }
               break;
             case SCTP_CANT_STR_ASSOC: {
-              logger.log(Level.INFO, "Received cant-strt-assoc notification on association " + assoc_id);
+              if (log.isInfoEnabled()) {
+                log.info("Received cant-strt-assoc notification on association " + assoc_id);
+              }
               //And outstanding connect operatio failed.
               final OutstandingConnection oc = outstanding_connections.peek();
               if (oc != null) {
-                logger.log(Level.INFO, "SCTP connection to " + oc.conn.host_id + " failed.");
+                if (log.isInfoEnabled()) {
+                  log.info("SCTP connection to " + oc.conn.host_id + " failed.");
+                }
                 outstanding_connections.removeFirst();
                 conn = oc.conn;
               } else {
-                logger.log(Level.WARNING,
-                    "Got a cant-start-association association-change-event but no outstanding connect operation was found");
+                log.warn("Got a cant-start-association association-change-event but no outstanding connect operation was found");
               }
               break;
             }
@@ -510,31 +527,29 @@ final class SCTPNode extends NodeImplementation {
 
       //Not subscribed:
       //case SCTP_PEER_ADDR_CHANGE:
-
       //Not subscribed:
       //case SCTP_REMOTE_ERROR:
-
       //Not subscribed:
       //case SCTP_SEND_FAILED:
-
       case SCTP_SHUTDOWN_EVENT: {
         final SCTPNotificationShutdownEvent sse = (SCTPNotificationShutdownEvent) notification;
         final AssociationId assoc_id = sse.sse_assoc_id;
         final SCTPConnection conn = map.get(assoc_id);
-        logger.log(Level.INFO, "Received shutdown event from" + conn.host_id);
+        if (log.isInfoEnabled()) {
+          log.info("Received shutdown event from" + conn.host_id);
+        }
         closeConnection(conn);
         break;
       }
       default: {
-        logger.log(Level.WARNING,
-            "Received unknown SCTP event (" + notification.type + ")" + notification.toString());
+        log.warn("Received unknown SCTP event (" + notification.type + ")" + notification.toString());
         break;
       }
     }
   }
 
   void sendMessage(final SCTPConnection conn, final byte[] raw) {
-    logger.log(Level.FINEST, "sendMessage():");
+    log.trace("sendMessage():");
     try {
       final SCTPData data = new SCTPData(raw);
       data.sndrcvinfo.sinfo_assoc_id = conn.assoc_id;
@@ -602,13 +617,15 @@ final class SCTPNode extends NodeImplementation {
       try {
         oc.address = InetAddress.getByName(peer.host());
         final InetSocketAddress sock_addr = new InetSocketAddress(oc.address, peer.port());
-        logger.log(Level.FINEST, "Initiating SCTP connection to " + sock_addr.toString());
+        if (log.isTraceEnabled()) {
+          log.trace("Initiating SCTP connection to " + sock_addr.toString());
+        }
         sctp_socket.connect(sock_addr);
         conn.state = Connection.State.connecting;
         return true;
       } catch (final java.io.IOException ex) {
-        logger.log(Level.WARNING, "java.io.IOException caught while initiating connection to '" + peer.host() + "'.",
-            ex);
+        log.warn("java.io.IOException caught while initiating connection to '" + peer.host() + "'.",
+                ex);
         outstanding_connections.removeFirst();
       }
     }
@@ -619,11 +636,13 @@ final class SCTPNode extends NodeImplementation {
   void close(final Connection conn_, final boolean reset) {
     final SCTPConnection conn = (SCTPConnection) conn_;
     if (!conn.closed) {
-      logger.log(Level.FINEST, "Closing connection (SCTP) to " + conn.host_id);
+      if (log.isTraceEnabled()) {
+        log.trace("Closing connection (SCTP) to " + conn.host_id);
+      }
       try {
         sctp_socket.disconnect(conn.assoc_id, reset);
       } catch (final java.io.IOException ex) {
-        logger.log(Level.WARNING, "Error closing SCTP connection to " + conn.host_id, ex);
+        log.warn("Error closing SCTP connection to " + conn.host_id, ex);
       }
     }
     map.remove(conn.assoc_id);

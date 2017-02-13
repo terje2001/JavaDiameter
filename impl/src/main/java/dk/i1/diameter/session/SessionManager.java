@@ -3,8 +3,6 @@ package dk.i1.diameter.session;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Grouped;
 import dk.i1.diameter.AVP_UTF8String;
@@ -20,6 +18,7 @@ import dk.i1.diameter.node.NotARequestException;
 import dk.i1.diameter.node.NotRoutableException;
 import dk.i1.diameter.node.Peer;
 import dk.i1.diameter.node.UnsupportedTransportProtocolException;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * A go-between sessions and NodeManager.
@@ -32,8 +31,11 @@ import dk.i1.diameter.node.UnsupportedTransportProtocolException;
  * packets) by putting "dk.i1.diameter.session.level = ALL" into your
  * log.properties file (or equivalent)
  */
+@Slf4j
 public final class SessionManager extends NodeManager {
+
   private static class SessionAndTimeout {
+
     public Session session;
     public long timeout;
     public boolean deleted;
@@ -50,7 +52,6 @@ public final class SessionManager extends NodeManager {
   private Thread timer_thread;
   private long earliest_timeout;
   private boolean stop;
-  Logger logger;
 
   /**
    * Constructor for SessionManager.
@@ -68,7 +69,6 @@ public final class SessionManager extends NodeManager {
     this.peers = peers;
     earliest_timeout = Long.MAX_VALUE;
     stop = false;
-    logger = Logger.getLogger("dk.i1.diameter.session");
   }
 
   /**
@@ -77,7 +77,7 @@ public final class SessionManager extends NodeManager {
    */
   @Override
   public void start() throws java.io.IOException, UnsupportedTransportProtocolException {
-    logger.log(Level.FINE, "Starting session manager");
+    log.trace("Starting session manager");
     super.start();
     timer_thread = new TimerThread();
     timer_thread.setDaemon(true);
@@ -95,7 +95,7 @@ public final class SessionManager extends NodeManager {
    */
   @Override
   public void stop(final long grace_time) {
-    logger.log(Level.FINE, "Stopping session manager");
+    log.trace("Stopping session manager");
     super.stop(grace_time);
     synchronized (map_session) {
       stop = true;
@@ -105,7 +105,7 @@ public final class SessionManager extends NodeManager {
       timer_thread.join();
     } catch (final InterruptedException e) {
     }
-    logger.log(Level.FINE, "Session manager stopped");
+    log.trace("Session manager stopped");
   }
 
   /**
@@ -114,18 +114,20 @@ public final class SessionManager extends NodeManager {
    */
   @Override
   protected void handleRequest(final Message request, final ConnectionKey connkey, final Peer peer) {
-    logger.log(Level.FINE, "Handling request, command_code=" + request.hdr.command_code);
+    if (log.isTraceEnabled()) {
+      log.trace("Handling request, command_code=" + request.hdr.command_code);
+    }
     //todo: verify that destination-host is us
     final Message answer = new Message();
     answer.prepareResponse(request);
 
     final String session_id = extractSessionId(request);
     if (session_id == null) {
-      logger.log(Level.FINE, "Cannot handle request - no Session-Id AVP in request");
+      log.trace("Cannot handle request - no Session-Id AVP in request");
       answer.add(new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_MISSING_AVP));
       node().addOurHostAndRealm(answer);
       answer.add(new AVP_Grouped(ProtocolConstants.DI_FAILED_AVP,
-          new AVP[] { new AVP_UTF8String(ProtocolConstants.DI_SESSION_ID, "") }));
+              new AVP[]{new AVP_UTF8String(ProtocolConstants.DI_SESSION_ID, "")}));
       Utils.copyProxyInfo(request, answer);
       Utils.setMandatory_RFC3588(answer);
       try {
@@ -136,10 +138,11 @@ public final class SessionManager extends NodeManager {
     }
     final Session s = findSession(session_id);
     if (s == null) {
-      logger.log(Level.FINE,
-          "Cannot handle request - Session-Id '" + session_id + " does not denote a known session");
+      if (log.isTraceEnabled()) {
+        log.trace("Cannot handle request - Session-Id '" + session_id + " does not denote a known session");
+      }
       answer.add(
-          new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNKNOWN_SESSION_ID));
+              new AVP_Unsigned32(ProtocolConstants.DI_RESULT_CODE, ProtocolConstants.DIAMETER_RESULT_UNKNOWN_SESSION_ID));
       node().addOurHostAndRealm(answer);
       Utils.copyProxyInfo(request, answer);
       Utils.setMandatory_RFC3588(answer);
@@ -161,6 +164,7 @@ public final class SessionManager extends NodeManager {
   }
 
   private static class RequestState {
+
     public int command_code;
     public Object state;
     public Session session;
@@ -173,24 +177,30 @@ public final class SessionManager extends NodeManager {
    */
   @Override
   protected void handleAnswer(final Message answer, final ConnectionKey answer_connkey, final Object state) {
-    if (answer != null) {
-      logger.log(Level.FINE, "Handling answer, command_code=" + answer.hdr.command_code);
-    } else {
-      logger.log(Level.FINE, "Handling non-answer");
+    if (log.isTraceEnabled()) {
+      if (answer != null) {
+        log.trace("Handling answer, command_code=" + answer.hdr.command_code);
+      } else {
+        log.trace("Handling non-answer");
+      }
     }
-    Session s;
+    final Session s;
     final String session_id = extractSessionId(answer);
-    logger.log(Level.FINEST, "session-id=" + session_id);
+    if (log.isTraceEnabled()) {
+      log.trace("session-id=" + session_id);
+    }
     if (session_id != null) {
       s = findSession(session_id);
     } else {
       s = ((RequestState) state).session;
     }
     if (s == null) {
-      logger.log(Level.FINE, "Session '" + session_id + "' not found");
+      if (log.isTraceEnabled()) {
+        log.trace("Session '" + session_id + "' not found");
+      }
       return;
     }
-    logger.log(Level.FINE, "Found session, dispatching (non-)answer to it");
+    log.trace("Found session, dispatching (non-)answer to it");
 
     if (answer != null) {
       s.handleAnswer(answer, ((RequestState) state).state);
@@ -212,9 +222,10 @@ public final class SessionManager extends NodeManager {
    *        {@link Session#handleNonAnswer} call.
    */
   public void sendRequest(final Message request, final Session session, final Object state)
-    throws NotRoutableException, NotARequestException {
-    logger.log(Level.FINE,
-        "Sending request (command_code=" + request.hdr.command_code + ") for session " + session.sessionId());
+          throws NotRoutableException, NotARequestException {
+    if (log.isTraceEnabled()) {
+      log.trace("Sending request (command_code=" + request.hdr.command_code + ") for session " + session.sessionId());
+    }
     final RequestState rs = new RequestState();
     rs.command_code = request.hdr.command_code;
     rs.state = state;
@@ -266,7 +277,9 @@ public final class SessionManager extends NodeManager {
    * @param s The Session to be registered.
    */
   public void unregister(final Session s) {
-    logger.log(Level.FINE, "Unregistering session " + s.sessionId());
+    if (log.isTraceEnabled()) {
+      log.trace("Unregistering session " + s.sessionId());
+    }
     synchronized (map_session) {
       final SessionAndTimeout sat = map_session.get(s.sessionId());
       if (sat != null) {
@@ -277,7 +290,7 @@ public final class SessionManager extends NodeManager {
         return;
       }
     }
-    logger.log(Level.WARNING, "Could not find session " + s.sessionId());
+    log.warn("Could not find session " + s.sessionId());
   }
 
   /**
@@ -318,6 +331,7 @@ public final class SessionManager extends NodeManager {
   }
 
   private class TimerThread extends Thread {
+
     public TimerThread() {
       super("SessionManager timer thread");
     }
@@ -329,7 +343,7 @@ public final class SessionManager extends NodeManager {
           long now = System.currentTimeMillis();
           earliest_timeout = Long.MAX_VALUE;
           for (final Iterator<Map.Entry<String, SessionAndTimeout>> it = map_session.entrySet().iterator(); it
-              .hasNext();) {
+                  .hasNext();) {
             final Map.Entry<String, SessionAndTimeout> e = it.next();
             if (e.getValue().deleted) {
               it.remove();
