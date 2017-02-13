@@ -1,3 +1,4 @@
+package dk.i1.diameter.abnf;
 
 import java.io.BufferedReader;
 import java.io.FileInputStream;

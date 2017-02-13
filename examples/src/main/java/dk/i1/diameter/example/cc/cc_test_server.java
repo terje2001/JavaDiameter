@@ -1,3 +1,5 @@
+package dk.i1.diameter.example.cc;
+
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Grouped;
 import dk.i1.diameter.AVP_Integer32;

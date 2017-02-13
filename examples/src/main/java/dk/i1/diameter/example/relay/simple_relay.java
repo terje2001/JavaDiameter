@@ -1,3 +1,5 @@
+package dk.i1.diameter.example.relay;
+
 import java.util.ArrayList;
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_UTF8String;

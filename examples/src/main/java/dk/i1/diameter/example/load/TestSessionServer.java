@@ -1,3 +1,5 @@
+package dk.i1.diameter.example.load;
+
 import dk.i1.diameter.AVP;
 import dk.i1.diameter.AVP_Unsigned32;
 import dk.i1.diameter.Message;

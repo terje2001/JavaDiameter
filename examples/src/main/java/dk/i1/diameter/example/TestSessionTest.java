@@ -1,3 +1,5 @@
+package dk.i1.diameter.example;
+
 import dk.i1.diameter.ProtocolConstants;
 import dk.i1.diameter.node.Capability;
 import dk.i1.diameter.node.InvalidSettingException;

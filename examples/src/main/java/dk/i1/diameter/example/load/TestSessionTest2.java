@@ -1,5 +1,8 @@
+package dk.i1.diameter.example.load;
+
 import dk.i1.diameter.Message;
 import dk.i1.diameter.ProtocolConstants;
+import dk.i1.diameter.example.TestSession;
 import dk.i1.diameter.node.Capability;
 import dk.i1.diameter.node.InvalidSettingException;
 import dk.i1.diameter.node.NodeSettings;

@@ -1,3 +1,5 @@
+package dk.i1.diameter.example;
+
 import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
