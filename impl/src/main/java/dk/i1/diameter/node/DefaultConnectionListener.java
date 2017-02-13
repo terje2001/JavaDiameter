@@ -1,6 +1,6 @@
 package dk.i1.diameter.node;
 
-class DefaultConnectionListener implements ConnectionListener {
-	public void handle(ConnectionKey connkey, Peer peer, boolean up) {
-	}
+final class DefaultConnectionListener implements ConnectionListener {
+  public void handle(final ConnectionKey connkey, final Peer peer, final boolean up) {
+  }
 }

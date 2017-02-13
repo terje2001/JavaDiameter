@@ -6,7 +6,10 @@ package dk.i1.diameter.node;
  * but the message was not marked as proxiable.
  * You probably forgot to check {@link dk.i1.diameter.MessageHeader#isProxiable}.
  */
-public class NotProxiableException extends Exception {
-	public NotProxiableException() {
-	}
+public final class NotProxiableException extends Exception {
+
+  private static final long serialVersionUID = 1L;
+
+  public NotProxiableException() {
+  }
 }

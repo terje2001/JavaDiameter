@@ -6,27 +6,32 @@ package dk.i1.diameter;
  * unsigned data type, so this class is functionally equivalent to {@link AVP_Integer32}
  */
 public class AVP_Unsigned32 extends AVP {
-	public AVP_Unsigned32(AVP a) throws InvalidAVPLengthException {
-		super(a);
-		if(a.queryPayloadSize()!=4)
-			throw new InvalidAVPLengthException(a);
-	}
-	public AVP_Unsigned32(int code, int value) {
-		super(code,int2byte(value));
-	}
-	public AVP_Unsigned32(int code, int vendor_id, int value) {
-		super(code,vendor_id,int2byte(value));
-	}
-	public int queryValue() {
-		return packunpack.unpack32(payload,0);
-	}
-	public void setValue(int value) {
-		packunpack.pack32(payload,0,value);
-	}
-	
-	static private final byte[] int2byte(int value) {
-		byte[] v=new byte[4];
-		packunpack.pack32(v,0,value);
-		return v;
-	}
+  public AVP_Unsigned32(final AVP a) throws InvalidAVPLengthException {
+    super(a);
+    if (a.queryPayloadSize() != 4) {
+      throw new InvalidAVPLengthException(a);
+    }
+  }
+
+  public AVP_Unsigned32(final int code, final int value) {
+    super(code, int2byte(value));
+  }
+
+  public AVP_Unsigned32(final int code, final int vendor_id, final int value) {
+    super(code, vendor_id, int2byte(value));
+  }
+
+  public int queryValue() {
+    return packunpack.unpack32(payload, 0);
+  }
+
+  public void setValue(final int value) {
+    packunpack.pack32(payload, 0, value);
+  }
+
+  static private final byte[] int2byte(final int value) {
+    final byte[] v = new byte[4];
+    packunpack.pack32(v, 0, value);
+    return v;
+  }
 }

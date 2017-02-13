@@ -1,8 +1,9 @@
 package dk.i1.diameter.node;
+
 import dk.i1.diameter.Message;
 
-class DefaultMessageDispatcher implements MessageDispatcher {
-	public boolean handle(Message msg, ConnectionKey connkey, Peer peer) {
-		return false;
-	}
+final class DefaultMessageDispatcher implements MessageDispatcher {
+  public boolean handle(final Message msg, final ConnectionKey connkey, final Peer peer) {
+    return false;
+  }
 }

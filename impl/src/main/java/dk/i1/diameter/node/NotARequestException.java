@@ -6,7 +6,10 @@ package dk.i1.diameter.node;
  * method but the message was not marked as a request.
  * You probably forgot {@link dk.i1.diameter.MessageHeader#setRequest}.
  */
-public class NotARequestException extends Exception {
-	public NotARequestException() {
-	}
+public final class NotARequestException extends Exception {
+
+  private static final long serialVersionUID = 1L;
+
+  public NotARequestException() {
+  }
 }

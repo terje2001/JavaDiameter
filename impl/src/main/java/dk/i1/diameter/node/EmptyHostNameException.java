@@ -5,13 +5,18 @@ package dk.i1.diameter.node;
  * This exception is thrown when trying to construct a {@link Peer} with an
  * empty hostname.
  */
-public class EmptyHostNameException extends Exception {
-	public EmptyHostNameException() {
-	}
-	public EmptyHostNameException(String message) {
-		super(message);
-	}
-	public EmptyHostNameException(Throwable cause) {
-		super(cause);
-	}
+public final class EmptyHostNameException extends Exception {
+
+  private static final long serialVersionUID = 1L;
+
+  public EmptyHostNameException() {
+  }
+
+  public EmptyHostNameException(final String message) {
+    super(message);
+  }
+
+  public EmptyHostNameException(final Throwable cause) {
+    super(cause);
+  }
 }

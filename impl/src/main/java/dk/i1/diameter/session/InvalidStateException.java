@@ -1,12 +1,17 @@
 package dk.i1.diameter.session;
 
-public class InvalidStateException extends Exception {
-	public InvalidStateException() {
-	}
-	public InvalidStateException(String message) {
-		super(message);
-	}
-	public InvalidStateException(Throwable cause) {
-		super(cause);
-	}
+public final class InvalidStateException extends Exception {
+
+  private static final long serialVersionUID = 1L;
+
+  public InvalidStateException() {
+  }
+
+  public InvalidStateException(final String message) {
+    super(message);
+  }
+
+  public InvalidStateException(final Throwable cause) {
+    super(cause);
+  }
 }

@@ -6,13 +6,18 @@ package dk.i1.diameter.node;
  * because no connection(s) was available or because no available peers
  * supported the message.
  */
-public class NotRoutableException extends Exception {
-	public NotRoutableException() {
-	}
-	public NotRoutableException(String message) {
-		super(message);
-	}
-	public NotRoutableException(Throwable cause) {
-		super(cause);
-	}
+public final class NotRoutableException extends Exception {
+
+  private static final long serialVersionUID = 1L;
+
+  public NotRoutableException() {
+  }
+
+  public NotRoutableException(final String message) {
+    super(message);
+  }
+
+  public NotRoutableException(final Throwable cause) {
+    super(cause);
+  }
 }

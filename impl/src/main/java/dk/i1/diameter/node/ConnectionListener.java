@@ -8,12 +8,13 @@ package dk.i1.diameter.node;
  * transport connection)
  */
 public interface ConnectionListener {
-	/**
-	 * A connection has changed state.
-	 * If up is false then connkey is no longer valid (connection lost).
-	 * @param connkey The connection key.
-	 * @param peer The peer the connection is to.
-	 * @param up True if the connection has been established. False if the connection has been lost.
-	 */
-	public void handle(ConnectionKey connkey, Peer peer, boolean up);
+  /**
+   * A connection has changed state.
+   * If up is false then connkey is no longer valid (connection lost).
+   *
+   * @param connkey The connection key.
+   * @param peer The peer the connection is to.
+   * @param up True if the connection has been established. False if the connection has been lost.
+   */
+  void handle(ConnectionKey connkey, Peer peer, boolean up);
 }
