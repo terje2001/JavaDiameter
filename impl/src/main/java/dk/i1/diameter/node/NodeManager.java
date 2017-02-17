@@ -151,11 +151,13 @@ public abstract class NodeManager implements MessageDispatcher, ConnectionListen
       }
       req_map.notify();
     }
-    try {
-      timeout_thread.join();
-    } catch (final InterruptedException ex) {
+    if (timeout_thread != null) {
+      try {
+        timeout_thread.join();
+      } catch (final InterruptedException ex) {
+      }
+      timeout_thread = null;
     }
-    timeout_thread = null;
     //Fastest way to clear it...
     req_map = new HashMap<ConnectionKey, Map<Integer, RequestData>>();
   }
