@@ -1,3 +1,20 @@
+# Please read #
+This is a fork of the original JavaDiameter library, please see https://github.com/isj4/JavaDiameter and its license. All modifications and additions made here are released under the same license without any further restrictions or guarantees.
+
+Why fork / goals:
+
+ - Remove custom C-code for SCTP - replace with Netty.io
+ - Remove manual tcp handling - replace with Netty.io
+ - Convert to modern (?) build: Maven
+ - Clean up code style to something slightly more normal.
+ - Performance improvements
+ - Add JUnit test cases
+
+All comments, bugs and PRs accepted with gratitude! 
+
+Original README:
+----------------
+
 # JavaDiameter #
 
 _JavaDiameter_ is a library for supporting the diameter protocol. It contains raw protocol support, message and AVP encoders/decoders and various classes for implementing different diameter node types (proxies, servers, clients, ...). It is dictionary-less and schema-less.
